@@ -86,6 +86,19 @@ QuadMesh::VertexSoup QuadMesh::get_vertex_soup() const
     return result;
 }
 
+void QuadMesh::remove(size_t index)
+{
+    remove(nodes_[index]);
+}
+
+void QuadMesh::remove(NodePtr node)
+{
+    for (auto& i : node->adjacent_) {
+        nodes_[i]->adjacent_.erase(node->index_);
+    }
+    node->adjacent_.clear();
+}
+
 size_t QuadMesh::drop_obsolete()
 {
     size_t result = 0;

@@ -13,20 +13,25 @@ using namespace std;
 QuadSurfaceMeshBuilder& QuadSurfaceMeshBuilder::get()
 {
     for (auto& i : bounds_) {
-        if (i.size() > 6) {
-            auto last = begin(i);
-            while (true) {
-                auto [first, full_traverse] = choose_row(i, last);
-                last = generate_row(i, first);
-                if (full_traverse) {
-                    break;
-                }
+        auto last = begin(i);
+        while (true) {
+            auto [first, full_traverse] = choose_row(i, last);
+            last = generate_row(i, first);
+            if (full_traverse) {
+                break;
             }
         }
     }
 
     flush();
     return *this;
+}
+
+std::optional<QuadSurfaceMeshBuilder::PavingIter>
+QuadSurfaceMeshBuilder::primitive_classification(
+    QuadSurfaceMeshBuilder::PavingBoundary& b)
+{
+    return nullopt;
 }
 
 pair<QuadSurfaceMeshBuilder::PavingIter, bool>
@@ -151,34 +156,28 @@ QuadSurfaceMeshBuilder::generate_row(PavingBoundary& b, PavingIter first)
 QuadSurfaceMeshBuilder::PavingBoundaryNode
 QuadSurfaceMeshBuilder::at_bisect(const PavingCycle& it) const
 {
-    auto [p, c, n, ax] = get_triple(it);
+    auto [p, c, n, z] = get_triple(it);
     auto angle = it->iangle / 2;
-    auto u = ax.rotate_z(angle, Vec(c, n)).normalize();
-    log_->info("node: {}, ax: {}, u: {}, norm(u): {}", it->vindex, ax, u,
-               u.norm());
-    CHECK_(!u.isnan(), "u is nan ( p: {}, c: {}, n: {} )", p, c, n);
 
     auto d = (dist(p, c) + dist(c, n)) / (2 * sin(angle));
+    auto r = c + d * Mat::rotate(angle, z) * unit({c, n});
 
-    return append_b(c + u * d);
+    log_->info("at bisect: (p: {}, c: {}, n: {}, r: {})", p, c, n, r);
+    return append_b(r);
 }
 
 array<QuadSurfaceMeshBuilder::PavingBoundaryNode, 3>
 QuadSurfaceMeshBuilder::at_trisect(const PavingCycle& it) const
 {
-    auto [p, c, n, ax] = get_triple(it);
+    auto [p, c, n, z] = get_triple(it);
 
     auto angle = it->iangle / 3;
-    auto cn = unit({c, n});
-    auto u2 = ax.rotate_z(angle, cn);
-    auto u0 = ax.rotate_z(angle, u2);
-    auto u1 = unit(u0 + u2);
-
-    CHECK_(!u0.isnan(), "u0 is nan ( p: {}, c: {}, n: {} )", p, c, n);
-    CHECK_(!u1.isnan(), "u1 is nan ( p: {}, c: {}, n: {} )", p, c, n);
-    CHECK_(!u2.isnan(), "u2 is nan ( p: {}, c: {}, n: {} )", p, c, n);
-
+    auto rmat = Mat::rotate(angle, z);
     auto d = (dist(p, c) + dist(c, n)) / (2 * sin(angle));
+
+    auto u2 = rmat * unit({c, n});
+    auto u0 = rmat * u2;
+    auto u1 = unit(u0 + u2);
 
     return {append_b(c + d * u0), append_b(c + sqrt(2) * d * u1),
             append_b(c + d * u2)};
@@ -187,22 +186,17 @@ QuadSurfaceMeshBuilder::at_trisect(const PavingCycle& it) const
 array<QuadSurfaceMeshBuilder::PavingBoundaryNode, 5>
 QuadSurfaceMeshBuilder::at_pentasect(const PavingCycle& it) const
 {
-    auto [p, c, n, ax] = get_triple(it);
-    auto cp = unit({c, p}), cn = unit({c, n});
+    auto [p, c, n, z] = get_triple(it);
 
-    auto u2 = ax.rotate_z(it->iangle / 2, cn);
-    auto u0 = unit(cp + u2);
-    auto u4 = unit(cn + u2);
+    auto angle = it->iangle;
+    auto rmat = Mat::rotate(angle, z);
+    auto u4 = rmat * unit({c, n});
+    auto u2 = rmat * u4;
+    auto u0 = rmat * u2;
     auto u1 = unit(u0 + u2);
     auto u3 = unit(u2 + u4);
 
-    CHECK_(!u0.isnan(), "u0 is nan ( p: {}, c: {}, n: {} )", p, c, n);
-    CHECK_(!u1.isnan(), "u1 is nan ( p: {}, c: {}, n: {} )", p, c, n);
-    CHECK_(!u2.isnan(), "u2 is nan ( p: {}, c: {}, n: {} )", p, c, n);
-    CHECK_(!u3.isnan(), "u3 is nan ( p: {}, c: {}, n: {} )", p, c, n);
-    CHECK_(!u4.isnan(), "u4 is nan ( p: {}, c: {}, n: {} )", p, c, n);
-
-    auto d = (dist(p, c) + dist(c, n)) / (2 * sin(it->iangle / 4));
+    auto d = (dist(p, c) + dist(c, n)) / (2 * sin(angle));
 
     return {append_b(c + d * u0), append_b(c + sqrt(2) * d * u1),
             append_b(c + d * u2), append_b(c + d * u3), append_b(c + d * u4)};
@@ -211,12 +205,11 @@ QuadSurfaceMeshBuilder::at_pentasect(const PavingCycle& it) const
 double QuadSurfaceMeshBuilder::set_iangle(const PavingCycle& i,
                                           BoundaryType type)
 {
-    auto [p, c, n, ax] = get_triple(i);
+    auto [p, c, n, z] = get_triple(i);
     auto cp = Vec(c, p), cn = Vec(c, n);
-    auto snorm = normal_at(c);
 
     auto result = angle(cp, cn);
-    if (int(type) * dot(cross(cp, cn), snorm) < 0) {
+    if (int(type) * dot(cross(cp, cn), z) < 0) {
         result = 2 * M_PI - result;
     }
     CHECK_(!isnan(result),
@@ -304,16 +297,21 @@ QuadSurfaceMeshBuilder::cycle(PavingBoundary& b) const
     return PavingCycle(begin(b), end(b));
 }
 
-tuple<Point, Point, Point, Axis>
+#define SIGN(b) ((b) ? (1) : (-1))
+
+tuple<Point, Point, Point, Vec>
 QuadSurfaceMeshBuilder::get_triple(const PavingCycle& i) const
 {
     auto p = at(prev(i)->vindex)->v();
     auto c = at(i->vindex)->v();
     auto n = at(next(i)->vindex)->v();
     auto s = tangent_at(c);
+    auto z = s.ax().z();
 
-    return {s.gproject(p), c, s.gproject(n), s.ax()};
+    return {s.gproject(p), c, s.gproject(n), z};
 }
+
+#undef SIGN
 
 Plane QuadSurfaceMeshBuilder::tangent_at(const Point& p) const
 {
@@ -377,9 +375,11 @@ QuadSurfaceMeshBuilder::QuadSurfaceMeshBuilder(
 }
 
 QuadSurfaceMeshBuilder&
-QuadSurfaceMeshBuilder::set_surface(shared_ptr<const AbstractSurface> surface)
+QuadSurfaceMeshBuilder::set_surface(shared_ptr<const AbstractSurface> surface,
+                                    bool same_sence)
 {
     surf_ = move(surface);
+    same_sence_ = same_sence;
     return *this;
 }
 
@@ -403,8 +403,15 @@ void QuadSurfaceMeshBuilder::init_boundary(
     b.type = type;
     b.resize(nodes.size());
     auto j = begin(b);
-    for (auto i = begin(nodes); i != end(nodes); ++i, ++j) {
-        *j = PavingBoundaryNode(*i, 2, true);
+
+    if (same_sence_) {
+        for (auto i = begin(nodes); i != end(nodes); ++i, ++j) {
+            *j = PavingBoundaryNode(*i, 2, true);
+        }
+    } else {
+        for (auto i = rbegin(nodes); i != rend(nodes); ++i, ++j) {
+            *j = PavingBoundaryNode(*i, 2, true);
+        }
     }
 }
 

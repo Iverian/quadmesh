@@ -1,4 +1,5 @@
 #include "quad_mesh_builder.h"
+#include "curve_discretize.h"
 #include "quad_surface_mesh_builder.h"
 
 #include <geom_model/geom_util.h>
@@ -53,8 +54,9 @@ void QuadMeshBuilder::build_face_mesh(const Face& f)
 {
     auto n = f.boundaries().size();
     vector<vector<QuadMesh::NodePtr>> bounds(n);
-    auto surf_builder = QuadSurfaceMeshBuilder(*this, log_)
-                            .set_surface(f.surface().shared_from_this());
+    auto surf_builder
+        = QuadSurfaceMeshBuilder(*this, log_)
+              .set_surface(f.surface().shared_from_this(), f.same_sense());
 
     for (size_t i = 0; i < n; ++i) {
         auto& loop = f.boundaries()[i];
@@ -121,5 +123,5 @@ QuadMesh::NodePtr QuadMeshBuilder::get_vertex(const Point& p)
 
 vector<Point> QuadMeshBuilder::discretize_points(const Edge& e)
 {
-    return e.curve().discretize(e.pfront(), e.pback());
+    return CurveDiscretize(conf_)(e);
 }

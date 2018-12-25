@@ -35,7 +35,7 @@ public:
         NodesType adjacent_view() const;
         const AdjacentType& adjacent() const;
         size_t count() const;
-        
+
         friend void set_adjacent(Node& lhs, Node& rhs);
 
         friend void set_adjacent(std::shared_ptr<Node> lhs,
@@ -74,6 +74,9 @@ public:
 
     EdgeSoup get_edge_soup() const;
     VertexSoup get_vertex_soup() const;
+
+    void remove(size_t index);
+    void remove(NodePtr node);
 
     size_t drop_obsolete();
     void fix_indices();

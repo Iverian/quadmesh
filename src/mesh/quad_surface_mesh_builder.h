@@ -64,7 +64,8 @@ public:
                            std::shared_ptr<spdlog::logger> log);
 
     QuadSurfaceMeshBuilder&
-    set_surface(std::shared_ptr<const AbstractSurface> surface);
+    set_surface(std::shared_ptr<const AbstractSurface> surface,
+                bool same_sence);
     QuadSurfaceMeshBuilder&
     set_bounds(std::vector<std::vector<QuadMesh::NodePtr>>&& bounds);
 
@@ -85,7 +86,7 @@ public:
     PavingBoundaryNode& resolve_ambiguity(PavingBoundaryNode& node);
 
     PavingCycle cycle(PavingBoundary& b) const;
-    std::tuple<Point, Point, Point, Axis>
+    std::tuple<Point, Point, Point, Vec>
     get_triple(const PavingCycle& i) const;
     Plane tangent_at(const Point& p) const;
     Vec normal_at(const Point& p) const;
@@ -94,6 +95,7 @@ public:
 
     std::pair<PavingIter, bool> choose_row(PavingBoundary& b,
                                            PavingIter first);
+    std::optional<PavingIter> primitive_classification(PavingBoundary& b);
 
     PavingIter generate_row(PavingBoundary& b, PavingIter first);
 
@@ -111,6 +113,8 @@ public:
 private:
     QuadMeshBuilder* parent_;
     std::shared_ptr<const AbstractSurface> surf_;
+    bool same_sence_;
+
     std::list<PavingBoundary> bounds_;
     std::shared_ptr<spdlog::logger> log_;
 
