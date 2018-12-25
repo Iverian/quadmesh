@@ -34,3 +34,4 @@
 # Misc
 out/
 build/
+.vscode

@@ -13,13 +13,14 @@ add_executable(all_tests
 target_include_directories(all_tests
     PRIVATE
         "../src"
-        ${CONAN_INCLUDE_DIRS_GTEST}
+        # ${CONAN_INCLUDE_DIRS_GTEST}
 )
 
 target_link_libraries(all_tests
     PRIVATE
         libquadmesh
         GeomModel::GeomModel
+        StepParser::StepParser
         CONAN_PKG::fmt
         CONAN_PKG::gtest
         CONAN_PKG::spdlog
@@ -37,13 +38,14 @@ foreach(_TEST_FILE ${TESTS_SOURCES})
     target_include_directories(${TESTS}
         PRIVATE
             "../src"
-            ${CONAN_INCLUDE_DIRS_GTEST}
+            # ${CONAN_INCLUDE_DIRS_GTEST}
     )
 
     target_link_libraries(${_TEST_NAME}
         PRIVATE
             libquadmesh
             GeomModel::GeomModel
+            StepParser::StepParser
             CONAN_PKG::fmt
             CONAN_PKG::gtest
             CONAN_PKG::spdlog

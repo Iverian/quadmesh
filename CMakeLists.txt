@@ -21,11 +21,46 @@ endif()
 include(${CMAKE_BINARY_DIR}/conan.cmake)
 
 conan_cmake_run(
-    REQUIRES gtest/1.8.1@bincrafters/stable
-             fmt/5.2.1@bincrafters/stable
-             spdlog/1.2.1@bincrafters/stable
+    REQUIRES
+        gtest/1.8.1@bincrafters/stable
+        fmt/5.2.1@bincrafters/stable
+        spdlog/1.2.1@bincrafters/stable
+        boost/1.69.0@conan/stable
     BASIC_SETUP CMAKE_TARGETS
     BUILD missing
+    OPTIONS
+        gtest:shared=False
+        
+        boost:without_math=True
+        boost:without_wave=True
+        boost:without_container=True
+        boost:without_contract=True
+        boost:without_exception=True
+        boost:without_graph=True
+        boost:without_iostreams=True
+        boost:without_locale=True
+        boost:without_log=True
+        boost:without_program_options=False
+        boost:without_random=True
+        boost:without_regex=True
+        boost:without_mpi=True
+        boost:without_serialization=True
+        boost:without_coroutine=True
+        boost:without_fiber=True
+        boost:without_context=True
+        boost:without_timer=True
+        boost:without_thread=True
+        boost:without_chrono=True
+        boost:without_date_time=True
+        boost:without_atomic=True
+        boost:without_filesystem=True
+        boost:without_system=True
+        boost:without_graph_parallel=True
+        boost:without_python=True
+        boost:without_stacktrace=True
+        boost:without_test=True
+        boost:without_type_erasure=True
+          
 )
 ###################################################################################################
 
@@ -59,7 +94,7 @@ if(WIN32)
     set(CMAKE_WINDOWS_EXPORT_ALL_SYMBOLS ON)
 endif()
 
-add_library(libquadmesh SHARED ${MAIN_HEADERS} ${MAIN_SOURCES})
+add_library(libquadmesh STATIC ${MAIN_HEADERS} ${MAIN_SOURCES})
 
 target_include_directories(libquadmesh
     PUBLIC
