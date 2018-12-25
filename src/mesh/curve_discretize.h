@@ -7,15 +7,19 @@
 #include <vector>
 
 class CurveDiscretize {
+public:
     explicit CurveDiscretize(const QuadmeshConfig& conf);
     virtual ~CurveDiscretize();
-    virtual std::vector<double> param(std::shared_ptr<AbstractCurve> curve,
+    virtual std::vector<double> param(const AbstractCurve& curve,
                                       double pfront, double pback) const;
 
     std::vector<double> param(const Edge& edge) const;
     std::vector<Point> operator()(const Edge& edge) const;
-    std::vector<Point> operator()(std::shared_ptr<AbstractCurve> curve,
-                                  double pfront, double pback) const;
+    std::vector<Point> operator()(const AbstractCurve& curve, double pfront,
+                                  double pback) const;
+
+protected:
+    double curv_step(const AbstractCurve& curve, double u) const;
 
 private:
     size_t approx_len_mesh_size_;

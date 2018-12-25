@@ -41,6 +41,11 @@ const array<double, 6>& QuadmeshConfig::get_angle_tolerances() const
     return pimpl_->get_angle_tolerances();
 }
 
+const pair<size_t, size_t> QuadmeshConfig::get_discretize_coeffs() const
+{
+    return pimpl_->get_discretize_coeffs();
+}
+
 QuadmeshConfig::Impl::Impl()
     : angle_tolerances_{def_at, def_at, def_at, def_at, def_at, def_at}
 {
@@ -59,4 +64,9 @@ QuadmeshConfig::Impl::Impl(const string& filename)
 const array<double, 6>& QuadmeshConfig::Impl::get_angle_tolerances() const
 {
     return angle_tolerances_;
+}
+
+const pair<size_t, size_t> QuadmeshConfig::Impl::get_discretize_coeffs() const
+{
+    return {10, 10};
 }
