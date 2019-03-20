@@ -4,13 +4,7 @@
 #include <stdexcept>
 #include <vector>
 
-#include <fmt/ostream.h>
-
-#include <step_parser.h>
-
-#include <util/itertools.h>
-
-using namespace std;
+#include <stp/parse.hpp>
 
 int main(int argc, char const* argv[])
 {

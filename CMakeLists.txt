@@ -1,140 +1,191 @@
-cmake_minimum_required(VERSION 3.0)
+cmake_minimum_required(VERSION 3.10)
 project(quadmesh VERSION 0.1.0 LANGUAGES CXX)
+list(INSERT CMAKE_MODULE_PATH 0 ${CMAKE_SOURCE_DIR}/cmake)
 
-###################################################################################################
+option(QM_ENABLE_TESTS "Enable unit tests (requires GTest to be installed)" YES)
+
+
 # Include additional cmake packages
 include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)
-###################################################################################################
+include(GenerateExportHeader)
+#
 
-set(CMAKE_CXX_STANDARD 17)
-list(INSERT CMAKE_MODULE_PATH 0 ${CMAKE_SOURCE_DIR}/cmake)
 
-###################################################################################################
-# Configure conan
-if(NOT EXISTS ${CMAKE_BINARY_DIR}/conan.cmake)
-    message(STATUS "Downloading conan.cmake from https://github.com/conan-io/cmake-conan")
-    file(DOWNLOAD "https://raw.githubusercontent.com/conan-io/cmake-conan/master/conan.cmake"
-                  "${CMAKE_BINARY_DIR}/conan.cmake")
-endif()
-
-include(${CMAKE_BINARY_DIR}/conan.cmake)
-
-conan_cmake_run(
-    REQUIRES
-        gtest/1.8.1@bincrafters/stable
-        fmt/5.2.1@bincrafters/stable
-        spdlog/1.2.1@bincrafters/stable
-        boost/1.69.0@conan/stable
-    BASIC_SETUP CMAKE_TARGETS
-    BUILD missing
-    OPTIONS
-        gtest:shared=False
-        
-        boost:without_math=True
-        boost:without_wave=True
-        boost:without_container=True
-        boost:without_contract=True
-        boost:without_exception=True
-        boost:without_graph=True
-        boost:without_iostreams=True
-        boost:without_locale=True
-        boost:without_log=True
-        boost:without_program_options=False
-        boost:without_random=True
-        boost:without_regex=True
-        boost:without_mpi=True
-        boost:without_serialization=True
-        boost:without_coroutine=True
-        boost:without_fiber=True
-        boost:without_context=True
-        boost:without_timer=True
-        boost:without_thread=True
-        boost:without_chrono=True
-        boost:without_date_time=True
-        boost:without_atomic=True
-        boost:without_filesystem=True
-        boost:without_system=True
-        boost:without_graph_parallel=True
-        boost:without_python=True
-        boost:without_stacktrace=True
-        boost:without_test=True
-        boost:without_type_erasure=True
-          
-)
-###################################################################################################
-
-###################################################################################################
 # Declare dependencies
+find_package(fmt CONFIG REQUIRED)
+find_package(spdlog CONFIG REQUIRED)
 find_package(GeomModel REQUIRED)
-find_package(StepParser REQUIRED)
-###################################################################################################
+find_package(StepParse REQUIRED)
+find_package(Boost REQUIRED
+  COMPONENTS program_options
+)
+#
 
-###################################################################################################
+
 # Find source files
-file(GLOB MAIN_HEADERS "include/quadmesh/*.h")
+set(PROJECT_TARGET QuadMesh)
+set(PROJECT_EXECUTABLE QuadMeshGen)
+set(PROJECT_SHORT_NAME qm)
+string(TOUPPER ${PROJECT_TARGET} PROJECT_TARGET_UPPER)
+string(TOUPPER ${PROJECT_SHORT_NAME} PROJECT_SHORT_NAME_UPPER)
 
-set(MAIN_EXECUTABLE "src/main.cpp")
-set(MAIN_SOURCES "")
-file(GLOB _SRC_CHILDREN "src/*")
+file(GLOB_RECURSE
+  PROJECT_SOURCES
+  CONFIGURE_DEPENDS
+  "${CMAKE_CURRENT_SOURCE_DIR}/src/*/*.cpp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/src/*.hpp"
+)
+file(GLOB
+  PROJECT_EXECUTABLE_SOURCES
+  CONFIGURE_DEPENDS
+  "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp"
+)
+file(GLOB_RECURSE
+  PROJECT_PUBLIC_HEADERS
+  CONFIGURE_DEPENDS
+  "${CMAKE_CURRENT_SOURCE_DIR}/include/*.hpp"
+  "${CMAKE_CURRENT_BINARY_DIR}/exports.hpp"
+)
+#
 
-foreach(_CHILD ${_SRC_CHILDREN})
-    if(IS_DIRECTORY ${_CHILD})
-        file(GLOB _CHILD_HEADERS "${_CHILD}/*.h")
-	    file(GLOB _CHILD_SOURCES "${_CHILD}/*.cpp")
-        list(APPEND MAIN_SOURCES ${_CHILD_HEADERS})
-        list(APPEND MAIN_SOURCES ${_CHILD_SOURCES})
-	endif()
-endforeach()
-###################################################################################################
 
-###################################################################################################
-# Create target and set properties
-if(WIN32)
-    set(CMAKE_WINDOWS_EXPORT_ALL_SYMBOLS ON)
+# Configure project library target
+add_library(${PROJECT_TARGET})
+
+target_sources(${PROJECT_TARGET}
+  PRIVATE
+    ${PROJECT_SOURCES}
+    ${PROJECT_PUBLIC_HEADERS}
+)
+target_include_directories(${PROJECT_TARGET}
+  PUBLIC
+    "$<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>"
+  PRIVATE
+    "$<BUILD_INTERFACE:${PROJECT_BINARY_DIR};${PROJECT_SOURCE_DIR}/src>"
+)
+target_compile_features(${PROJECT_TARGET}
+  PUBLIC
+    cxx_std_17
+)
+target_compile_definitions(${PROJECT_TARGET}
+  PUBLIC
+    $<BUILD_INTERFACE:_SILENCE_ALL_CXX17_DEPRECATION_WARNINGS>
+)
+target_link_libraries(${PROJECT_TARGET}
+  PRIVATE
+    spdlog::spdlog
+  PUBLIC
+    fmt::fmt
+    GeomModel::GeomModel
+    StepParse::StepParse
+)
+set_target_properties(${PROJECT_TARGET}
+  PROPERTIES
+    DEBUG_POSTFIX d
+    CXX_EXTENSIONS NO
+    WINDOWS_EXPORT_ALL_SYMBOLS ${QM_ENABLE_TESTS}
+)
+
+generate_export_header(${PROJECT_TARGET}
+  BASE_NAME "${PROJECT_SHORT_NAME_UPPER}"
+  EXPORT_FILE_NAME "exports.hpp"
+  NO_DEPRECATED_MACRO_NAME "${PROJECT_SHORT_NAME_UPPER}_OMIT_DEPRECATED"
+  DEFINE_NO_DEPRECATED
+)
+if (QM_ENABLE_TESTS)
+  target_compile_definitions(${PROJECT_TARGET}
+    PUBLIC
+      "${PROJECT_SHORT_NAME_UPPER}_STATIC_DEFINE"
+  )
 endif()
 
-add_library(libquadmesh STATIC ${MAIN_HEADERS} ${MAIN_SOURCES})
+add_library(${PROJECT_TARGET}::${PROJECT_TARGET} ALIAS ${PROJECT_TARGET})
+#
 
-target_include_directories(libquadmesh
-    PUBLIC
-        $<INSTALL_INTERFACE:${CMAKE_INSTALL_FULL_INCLUDEDIR}>
-        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-    PRIVATE
-        ${CONAN_INCLUDE_DIRS_FMT}
-        "src"
+
+# Configure project executable target
+add_executable(${PROJECT_EXECUTABLE})
+target_sources(${PROJECT_EXECUTABLE}
+  PRIVATE
+    ${PROJECT_EXECUTABLE_SOURCES}
+)
+target_link_libraries(${PROJECT_EXECUTABLE}
+  PRIVATE
+    ${PROJECT_TARGET}
+    StepParse::StepParse
+    Boost::program_options
+)
+set_target_properties(${PROJECT_EXECUTABLE}
+  PROPERTIES
+    DEBUG_POSTFIX d
+    CXX_EXTENSIONS NO
 )
 
-target_link_libraries(libquadmesh
-    PUBLIC
-        GeomModel::GeomModel
-    PRIVATE
-        CONAN_PKG::fmt
-        CONAN_PKG::spdlog
-)
+add_executable(${PROJECT_TARGET}::${PROJECT_EXECUTABLE} ALIAS ${PROJECT_EXECUTABLE})
+#
 
-add_executable(quadmesh ${MAIN_EXECUTABLE})
-
-target_include_directories(quadmesh
-    PUBLIC
-        $<INSTALL_INTERFACE:${CMAKE_INSTALL_FULL_INCLUDEDIR}>
-        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-    PRIVATE
-        ${CONAN_INCLUDE_DIRS_FMT}
-        "src"
-)
-
-target_link_libraries(quadmesh
-    PUBLIC
-        GeomModel::GeomModel
-        libquadmesh
-    PRIVATE
-        StepParser::StepParser
-        CONAN_PKG::fmt
-        CONAN_PKG::spdlog
-)
-
-###################################################################################################
 # Add tests
-add_subdirectory(test)
-###################################################################################################
+if (QM_ENABLE_TESTS)
+  add_subdirectory(tests)
+endif()
+#
+
+
+# Install library
+install(TARGETS ${PROJECT_TARGET} ${PROJECT_EXECUTABLE}
+  EXPORT ${PROJECT_TARGET}_targets
+  RUNTIME
+    DESTINATION "${CMAKE_INSTALL_BINDIR}"
+  LIBRARY
+    DESTINATION "${CMAKE_INSTALL_LIBDIR}"
+  ARCHIVE
+    DESTINATION "${CMAKE_INSTALL_LIBDIR}"
+  INCLUDES
+    DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}"
+)
+install(
+  DIRECTORY "${PROJECT_SOURCE_DIR}/include/"
+  DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}"
+)
+install(
+  FILES "${PROJECT_BINARY_DIR}/exports.hpp"
+  DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/${PROJECT_SHORT_NAME}"
+)
+
+set(PROJECT_INSTALL_CONFIGDIR "${CMAKE_INSTALL_LIBDIR}/cmake/${PROJECT_TARGET}")
+install(EXPORT ${PROJECT_TARGET}_targets
+  DESTINATION "${PROJECT_INSTALL_CONFIGDIR}"
+  NAMESPACE "${PROJECT_TARGET}::"
+  FILE "${PROJECT_TARGET}Targets.cmake"
+)
+
+get_target_property(PROJECT_TARGET_TYPE ${PROJECT_TARGET} TYPE)
+if (WIN32 AND
+    PROJECT_TARGET_TYPE STREQUAL "SHARED_LIBRARY" AND
+    NOT (CMAKE_CXX_COMPILER_ID STREQUAL "GNU"))
+  install(
+    FILES "$<TARGET_PDB_FILE:${PROJECT_TARGET}>"
+    DESTINATION "${CMAKE_INSTALL_BINDIR}"
+    OPTIONAL
+  )
+endif()
+
+write_basic_package_version_file(
+  "${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_TARGET}ConfigVersion.cmake"
+  VERSION ${PROJECT_VERSION}
+  COMPATIBILITY AnyNewerVersion
+)
+configure_package_config_file(
+  "${CMAKE_CURRENT_LIST_DIR}/cmake/${PROJECT_TARGET}Config.cmake.in"
+  "${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_TARGET}Config.cmake"
+  INSTALL_DESTINATION "${PROJECT_INSTALL_CONFIGDIR}"
+)
+
+# Install the config, configversion and custom find modules
+install(
+  FILES "${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_TARGET}Config.cmake"
+  "${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_TARGET}ConfigVersion.cmake"
+  DESTINATION "${PROJECT_INSTALL_CONFIGDIR}"
+)
+#

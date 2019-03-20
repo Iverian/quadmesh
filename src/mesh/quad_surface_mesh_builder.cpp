@@ -3,6 +3,9 @@
 #include "quad_surface_mesh_builder.h"
 #include "quad_mesh_builder.h"
 
+#include <gm/mat.hpp>
+#include <gm/vec.hpp>
+
 #include <util/debug.h>
 
 #include <cmath>
@@ -160,7 +163,7 @@ QuadSurfaceMeshBuilder::at_bisect(const PavingCycle& it) const
     auto angle = it->iangle / 2;
 
     auto d = (dist(p, c) + dist(c, n)) / (2 * sin(angle));
-    auto r = c + d * Mat::rotate(angle, z) * unit({c, n});
+    auto r = c + d * gm::dot(gm::Mat::rotate(angle, z), gm::unit({c, n}));
 
     log_->info("at bisect: (p: {}, c: {}, n: {}, r: {})", p, c, n, r);
     return append_b(r);
@@ -172,11 +175,11 @@ QuadSurfaceMeshBuilder::at_trisect(const PavingCycle& it) const
     auto [p, c, n, z] = get_triple(it);
 
     auto angle = it->iangle / 3;
-    auto rmat = Mat::rotate(angle, z);
+    auto rmat = gm::Mat::rotate(angle, z);
     auto d = (dist(p, c) + dist(c, n)) / (2 * sin(angle));
 
-    auto u2 = rmat * unit({c, n});
-    auto u0 = rmat * u2;
+    auto u2 = gm::dot(rmat, gm::unit({c, n}));
+    auto u0 = gm::dot(rmat, u2);
     auto u1 = unit(u0 + u2);
 
     return {append_b(c + d * u0), append_b(c + sqrt(2) * d * u1),
@@ -189,14 +192,14 @@ QuadSurfaceMeshBuilder::at_pentasect(const PavingCycle& it) const
     auto [p, c, n, z] = get_triple(it);
 
     auto angle = it->iangle;
-    auto rmat = Mat::rotate(angle, z);
-    auto u4 = rmat * unit({c, n});
-    auto u2 = rmat * u4;
-    auto u0 = rmat * u2;
-    auto u1 = unit(u0 + u2);
-    auto u3 = unit(u2 + u4);
+    auto rmat = gm::Mat::rotate(angle, z);
+    auto u4 = gm::dot(rmat, gm::unit({c, n}));
+    auto u2 = gm::dot(rmat, u4);
+    auto u0 = gm::dot(rmat, u2);
+    auto u1 = gm::unit(u0 + u2);
+    auto u3 = gm::unit(u2 + u4);
 
-    auto d = (dist(p, c) + dist(c, n)) / (2 * sin(angle));
+    auto d = (gm::dist(p, c) + gm::dist(c, n)) / (2 * sin(angle));
 
     return {append_b(c + d * u0), append_b(c + sqrt(2) * d * u1),
             append_b(c + d * u2), append_b(c + d * u3), append_b(c + d * u4)};
@@ -206,7 +209,7 @@ double QuadSurfaceMeshBuilder::set_iangle(const PavingCycle& i,
                                           BoundaryType type)
 {
     auto [p, c, n, z] = get_triple(i);
-    auto cp = Vec(c, p), cn = Vec(c, n);
+    auto cp = gm::Vec(c, p), cn = gm::Vec(c, n);
 
     auto result = angle(cp, cn);
     if (int(type) * dot(cross(cp, cn), z) < 0) {
@@ -299,7 +302,7 @@ QuadSurfaceMeshBuilder::cycle(PavingBoundary& b) const
 
 #define SIGN(b) ((b) ? (1) : (-1))
 
-tuple<Point, Point, Point, Vec>
+tuple<gm::Point, gm::Point, gm::Point, gm::Vec>
 QuadSurfaceMeshBuilder::get_triple(const PavingCycle& i) const
 {
     auto p = at(prev(i)->vindex)->v();
@@ -313,12 +316,12 @@ QuadSurfaceMeshBuilder::get_triple(const PavingCycle& i) const
 
 #undef SIGN
 
-Plane QuadSurfaceMeshBuilder::tangent_at(const Point& p) const
+gm::Plane QuadSurfaceMeshBuilder::tangent_at(const gm::Point& p) const
 {
     return surf()->tangent(surf()->project(p));
 }
 
-Vec QuadSurfaceMeshBuilder::normal_at(const Point& p) const
+gm::Vec QuadSurfaceMeshBuilder::normal_at(const gm::Point& p) const
 {
     return surf()->normal(surf()->project(p));
 }
@@ -334,7 +337,7 @@ QuadSurfaceMeshBuilder::at(const PavingBoundaryNode& node) const
     return at(node.vindex);
 }
 
-shared_ptr<const AbstractSurface> QuadSurfaceMeshBuilder::surf() const
+shared_ptr<const gm::AbstractSurface> QuadSurfaceMeshBuilder::surf() const
 {
     return surf_;
 }
@@ -349,7 +352,7 @@ shared_ptr<QuadMesh> QuadSurfaceMeshBuilder::mesh() const
     return parent_->mesh();
 }
 
-QuadMesh::NodePtr QuadSurfaceMeshBuilder::append(const Point& p) const
+QuadMesh::NodePtr QuadSurfaceMeshBuilder::append(const gm::Point& p) const
 {
     auto sp = surf()->project(p);
     auto result = mesh()->append(surf()->f(sp));
@@ -359,7 +362,7 @@ QuadMesh::NodePtr QuadSurfaceMeshBuilder::append(const Point& p) const
 }
 
 QuadSurfaceMeshBuilder::PavingBoundaryNode
-QuadSurfaceMeshBuilder::append_b(const Point& p) const
+QuadSurfaceMeshBuilder::append_b(const gm::Point& p) const
 {
     return PavingBoundaryNode(append(p), false);
 }
@@ -375,7 +378,7 @@ QuadSurfaceMeshBuilder::QuadSurfaceMeshBuilder(
 }
 
 QuadSurfaceMeshBuilder&
-QuadSurfaceMeshBuilder::set_surface(shared_ptr<const AbstractSurface> surface,
+QuadSurfaceMeshBuilder::set_surface(shared_ptr<const gm::AbstractSurface> surface,
                                     bool same_sence)
 {
     surf_ = move(surface);

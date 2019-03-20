@@ -2,7 +2,7 @@
 #include "curve_discretize.h"
 #include "quad_surface_mesh_builder.h"
 
-#include <geom_model/geom_util.h>
+#include <gm/compare.hpp>
 #include <util/debug.h>
 #include <util/logging.h>
 
@@ -10,7 +10,7 @@
 
 using namespace std;
 
-QuadMeshBuilder::QuadMeshBuilder(const Shell& shell,
+QuadMeshBuilder::QuadMeshBuilder(const gm::Shell& shell,
                                  const QuadmeshConfig& conf)
     : shell_(shell)
     , conf_(conf)
@@ -50,7 +50,7 @@ std::shared_ptr<QuadMesh> QuadMeshBuilder::mesh() const
     return mesh_;
 }
 
-void QuadMeshBuilder::build_face_mesh(const Face& f)
+void QuadMeshBuilder::build_face_mesh(const gm::Face& f)
 {
     auto n = f.boundaries().size();
     vector<vector<QuadMesh::NodePtr>> bounds(n);
@@ -63,7 +63,7 @@ void QuadMeshBuilder::build_face_mesh(const Face& f)
         auto& bound = bounds[i];
         for (auto& oedge : loop) {
             auto& d = discretize(oedge.edge());
-            if (oedge.orienation()) {
+            if (oedge.orientation()) {
                 bound.insert(end(bound), begin(d), prev(end(d)));
             } else {
                 bound.insert(end(bound), rbegin(d), prev(rend(d)));
@@ -79,7 +79,7 @@ void QuadMeshBuilder::build_face_mesh(const Face& f)
     surf_builder.get();
 }
 
-const vector<QuadMesh::NodePtr>& QuadMeshBuilder::discretize(const Edge& e)
+const vector<QuadMesh::NodePtr>& QuadMeshBuilder::discretize(const gm::Edge& e)
 {
     if (auto i = edges_.find(e); i == end(edges_)) {
         vector<QuadMesh::NodePtr> result;
@@ -100,13 +100,12 @@ const vector<QuadMesh::NodePtr>& QuadMeshBuilder::discretize(const Edge& e)
     }
 }
 
-QuadMesh::NodePtr QuadMeshBuilder::get_vertex(const Point& p)
+QuadMesh::NodePtr QuadMeshBuilder::get_vertex(const gm::Point& p)
 {
-    static constexpr auto eps = 1e-5;
     QuadMesh::NodePtr result = nullptr;
 
     for (auto& i : vertices_) {
-        if (isnear(p, i.first, eps)) {
+        if (gm::cmp::isnear(p, i.first)) {
             log_->info("matched existing vertex {} with point {}", i.first, p);
             result = i.second;
             break;
@@ -121,7 +120,7 @@ QuadMesh::NodePtr QuadMeshBuilder::get_vertex(const Point& p)
     return result;
 }
 
-vector<Point> QuadMeshBuilder::discretize_points(const Edge& e)
+vector<gm::Point> QuadMeshBuilder::discretize_points(const gm::Edge& e)
 {
     return CurveDiscretize(conf_)(e);
 }

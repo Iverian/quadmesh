@@ -1,5 +1,5 @@
-#include <geom_model/geom_util.h>
-#include <geom_model/plane.h>
+#include <gm/compare.hpp>
+#include <gm/plane.hpp>
 #include <quadmesh/quad_mesh.h>
 #include <util/debug.h>
 #include <util/itertools.h>
@@ -38,7 +38,7 @@ QuadMesh::NodesType::reference QuadMesh::operator[](size_t i)
     return nodes_[i];
 }
 
-const QuadMesh::NodesType::const_reference QuadMesh::operator[](size_t i) const
+QuadMesh::NodesType::const_reference QuadMesh::operator[](size_t i) const
 {
     return nodes_[i];
 }
@@ -48,7 +48,7 @@ size_t QuadMesh::size() const
     return nodes_.size();
 }
 
-QuadMesh::NodesType::reference QuadMesh::append(const Point& v)
+QuadMesh::NodesType::reference QuadMesh::append(const gm::Point& v)
 {
     auto vindex = nodes_.size();
     auto ptr = shared_ptr<Node>(new Node(shared_from_this(), v, vindex));
@@ -70,8 +70,8 @@ QuadMesh::EdgeSoup QuadMesh::get_edge_soup() const
     result.resize(unique.size());
     transform(::begin(unique), ::end(unique), ::begin(result),
               [&](const auto& i) {
-                  return array<Point, 2>{nodes_[i[0]]->vertex_,
-                                         nodes_[i[1]]->vertex_};
+                  return array<gm::Point, 2> {nodes_[i[0]]->vertex_,
+                                              nodes_[i[1]]->vertex_};
               });
 
     return result;
@@ -156,7 +156,7 @@ QuadMesh::Node::Node()
 {
 }
 
-QuadMesh::Node::Node(shared_ptr<QuadMesh> parent, const Point& v,
+QuadMesh::Node::Node(shared_ptr<QuadMesh> parent, const gm::Point& v,
                      size_t vindex)
     : parent_(parent)
     , index_(vindex)
@@ -170,7 +170,7 @@ size_t QuadMesh::Node::vindex() const
     return index_;
 }
 
-const Point& QuadMesh::Node::v() const
+const gm::Point& QuadMesh::Node::v() const
 {
     return vertex_;
 }

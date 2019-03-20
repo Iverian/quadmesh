@@ -1,7 +1,7 @@
 #ifndef QUADMESH_SRC_QUAD_SURFACE_MESH_BUILDER_H_
 #define QUADMESH_SRC_QUAD_SURFACE_MESH_BUILDER_H_
 
-#include <geom_model/plane.h>
+#include <gm/plane.hpp>
 #include <quadmesh/quad_mesh.h>
 #include <util/itertools.h>
 
@@ -64,18 +64,18 @@ public:
                            std::shared_ptr<spdlog::logger> log);
 
     QuadSurfaceMeshBuilder&
-    set_surface(std::shared_ptr<const AbstractSurface> surface,
+    set_surface(std::shared_ptr<const gm::AbstractSurface> surface,
                 bool same_sence);
     QuadSurfaceMeshBuilder&
     set_bounds(std::vector<std::vector<QuadMesh::NodePtr>>&& bounds);
 
     QuadSurfaceMeshBuilder& get();
 
-    std::shared_ptr<const AbstractSurface> surf() const;
+    std::shared_ptr<const gm::AbstractSurface> surf() const;
     const QuadmeshConfig& conf() const;
     std::shared_ptr<QuadMesh> mesh() const;
-    QuadMesh::NodePtr append(const Point& p) const;
-    PavingBoundaryNode append_b(const Point& p) const;
+    QuadMesh::NodePtr append(const gm::Point& p) const;
+    PavingBoundaryNode append_b(const gm::Point& p) const;
 
     void init_boundary(PavingBoundary& b,
                        const std::vector<QuadMesh::NodePtr>& nodes,
@@ -86,10 +86,10 @@ public:
     PavingBoundaryNode& resolve_ambiguity(PavingBoundaryNode& node);
 
     PavingCycle cycle(PavingBoundary& b) const;
-    std::tuple<Point, Point, Point, Vec>
+    std::tuple<gm::Point, gm::Point, gm::Point, gm::Vec>
     get_triple(const PavingCycle& i) const;
-    Plane tangent_at(const Point& p) const;
-    Vec normal_at(const Point& p) const;
+    gm::Plane tangent_at(const gm::Point& p) const;
+    gm::Vec normal_at(const gm::Point& p) const;
     QuadMesh::NodePtr at(size_t index) const;
     QuadMesh::NodePtr at(const PavingBoundaryNode& node) const;
 
@@ -112,7 +112,7 @@ public:
 
 private:
     QuadMeshBuilder* parent_;
-    std::shared_ptr<const AbstractSurface> surf_;
+    std::shared_ptr<const gm::AbstractSurface> surf_;
     bool same_sence_;
 
     std::list<PavingBoundary> bounds_;

@@ -1,26 +1,26 @@
 #include "curve_discretize.h"
-#include <geom_model/geom_util.h>
-#include <geom_model/line.h>
 
-using namespace std;
+#include <gm/compare.hpp>
+#include <gm/line.hpp>
+#include <tuple>
 
 CurveDiscretize::CurveDiscretize(const QuadmeshConfig& conf)
     : approx_len_mesh_size_()
     , div_curvature_coeff_()
 {
-    tie(approx_len_mesh_size_, div_curvature_coeff_)
+    std::tie(approx_len_mesh_size_, div_curvature_coeff_)
         = conf.get_discretize_coeffs();
 }
 
 CurveDiscretize::~CurveDiscretize() = default;
 
-vector<double> CurveDiscretize::param(const AbstractCurve& curve,
-                                      double pfront, double pback) const
+std::vector<double> CurveDiscretize::param(const gm::AbstractCurve& curve,
+                                           double pfront, double pback) const
 {
-    vector<double> result;
+    std::vector<double> result;
     bool reverse_flag = pback <= pfront;
     if (reverse_flag) {
-        swap(pfront, pback);
+        std::swap(pfront, pback);
     }
     auto cdelta = (pback - pfront) / 6;
 
@@ -40,31 +40,33 @@ vector<double> CurveDiscretize::param(const AbstractCurve& curve,
     return result;
 }
 
-double CurveDiscretize::curv_step(const AbstractCurve& curve, double u) const
+double CurveDiscretize::curv_step(const gm::AbstractCurve& curve,
+                                  double u) const
 {
     double result = 1;
-    if (auto d2 = curve.df2(u); !isnear(norm(d2), 0, 1e-5)) {
+    if (auto d2 = curve.df2(u); !gm::cmp::zero(d2)) {
         auto d1 = curve.df(u);
         result = sqr(d1) / norm(cross(d1, d2));
     }
     return result;
 }
 
-vector<double> CurveDiscretize::param(const Edge& edge) const
+std::vector<double> CurveDiscretize::param(const gm::Edge& edge) const
 {
-    return param(edge.curve(), edge.pfront(), edge.pback());
+    return param(*edge.curve(), edge.pfront(), edge.pback());
 }
 
-vector<Point> CurveDiscretize::operator()(const Edge& edge) const
+std::vector<gm::Point> CurveDiscretize::operator()(const gm::Edge& edge) const
 {
-    return this->operator()(edge.curve(), edge.pfront(), edge.pback());
+    return this->operator()(*edge.curve(), edge.pfront(), edge.pback());
 }
 
-vector<Point> CurveDiscretize::operator()(const AbstractCurve& curve,
-                                          double pfront, double pback) const
+std::vector<gm::Point>
+CurveDiscretize::operator()(const gm::AbstractCurve& curve, double pfront,
+                            double pback) const
 {
     auto v = param(curve, pfront, pback);
-    vector<Point> result(v.size());
+    std::vector<gm::Point> result(v.size());
     transform(begin(v), end(v), begin(result),
               [&curve](const auto& t) { return curve.f(t); });
     return result;

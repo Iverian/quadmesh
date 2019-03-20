@@ -35,3 +35,4 @@
 out/
 build/
 .vscode
+compile_commands.json
