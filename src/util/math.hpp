@@ -1,5 +1,5 @@
-#ifndef QUADMESH_SRC_UTIL_MATH_H_
-#define QUADMESH_SRC_UTIL_MATH_H_
+#ifndef QUADMESH_SRC_UTIL_MATH_HPP_
+#define QUADMESH_SRC_UTIL_MATH_HPP_
 
 #include <gm/surf_point.hpp>
 
@@ -14,4 +14,4 @@ T sqr(T x)
     return T(x * x);
 }
 
-#endif // QUADMESH_SRC_UTIL_MATH_H_
+#endif // QUADMESH_SRC_UTIL_MATH_HPP_

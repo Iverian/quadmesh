@@ -1,5 +1,5 @@
-#ifndef QUADMESH_SRC_UTIL_ITERTOOLS_H_
-#define QUADMESH_SRC_UTIL_ITERTOOLS_H_
+#ifndef QUADMESH_SRC_UTIL_ITERTOOLS_HPP_
+#define QUADMESH_SRC_UTIL_ITERTOOLS_HPP_
 
 #include <functional>
 #include <iostream>
@@ -219,4 +219,4 @@ private:
     BidirIt cur_;
 };
 
-#endif // QUADMESH_SRC_UTIL_ITERTOOLS_H_
+#endif // QUADMESH_SRC_UTIL_ITERTOOLS_HPP_

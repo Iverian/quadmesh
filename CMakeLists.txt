@@ -2,10 +2,13 @@ cmake_minimum_required(VERSION 3.10)
 project(quadmesh VERSION 0.1.0 LANGUAGES CXX)
 list(INSERT CMAKE_MODULE_PATH 0 ${CMAKE_SOURCE_DIR}/cmake)
 
-option(QM_ENABLE_TESTS "Enable unit tests (requires GTest to be installed)" YES)
+option(QMSH_ENABLE_TESTS "Enable unit tests (requires GTest to be installed)" YES)
 
 
 # Include additional cmake packages
+set(CMAKE_INSTALL_SYSTEM_RUNTIME_LIBS_SKIP TRUE)
+
+include(InstallRequiredSystemLibraries)
 include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)
 include(GenerateExportHeader)
@@ -15,18 +18,24 @@ include(GenerateExportHeader)
 # Declare dependencies
 find_package(fmt CONFIG REQUIRED)
 find_package(spdlog CONFIG REQUIRED)
-find_package(GeomModel REQUIRED)
-find_package(StepParse REQUIRED)
-find_package(Boost REQUIRED
-  COMPONENTS program_options
-)
+find_package(cxxopts CONFIG REQUIRED)
+find_package(RapidJSON CONFIG REQUIRED)
+
+find_package(Commons CONFIG REQUIRED)
+find_package(GeomModel CONFIG REQUIRED)
+find_package(StepParse CONFIG REQUIRED)
 #
 
 
 # Find source files
+set(PROJECT_RUNTIME_OUTPUT_DIR "${PROJECT_BINARY_DIR}/bin")
+set(PROJECT_LIBRARY_OUTPUT_DIR "${PROJECT_BINARY_DIR}/lib")
+set(PROJECT_ARCHIVE_OUTPUT_DIR "${PROJECT_LIBRARY_OUTPUT_DIR}")
+
+
 set(PROJECT_TARGET QuadMesh)
 set(PROJECT_EXECUTABLE QuadMeshGen)
-set(PROJECT_SHORT_NAME qm)
+set(PROJECT_SHORT_NAME qmsh)
 string(TOUPPER ${PROJECT_TARGET} PROJECT_TARGET_UPPER)
 string(TOUPPER ${PROJECT_SHORT_NAME} PROJECT_SHORT_NAME_UPPER)
 
@@ -60,9 +69,9 @@ target_sources(${PROJECT_TARGET}
 )
 target_include_directories(${PROJECT_TARGET}
   PUBLIC
-    "$<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>"
+    "$<BUILD_INTERFACE:${PROJECT_BINARY_DIR};${PROJECT_SOURCE_DIR}/src;${PROJECT_SOURCE_DIR}/include>"
   PRIVATE
-    "$<BUILD_INTERFACE:${PROJECT_BINARY_DIR};${PROJECT_SOURCE_DIR}/src>"
+    ${RAPIDJSON_INCLUDE_DIRS}
 )
 target_compile_features(${PROJECT_TARGET}
   PUBLIC
@@ -73,18 +82,18 @@ target_compile_definitions(${PROJECT_TARGET}
     $<BUILD_INTERFACE:_SILENCE_ALL_CXX17_DEPRECATION_WARNINGS>
 )
 target_link_libraries(${PROJECT_TARGET}
-  PRIVATE
-    spdlog::spdlog
   PUBLIC
-    fmt::fmt
+    Commons::Commons
     GeomModel::GeomModel
-    StepParse::StepParse
 )
 set_target_properties(${PROJECT_TARGET}
   PROPERTIES
     DEBUG_POSTFIX d
     CXX_EXTENSIONS NO
-    WINDOWS_EXPORT_ALL_SYMBOLS ${QM_ENABLE_TESTS}
+    WINDOWS_EXPORT_ALL_SYMBOLS ${QMSH_ENABLE_TESTS}
+    RUNTIME_OUTPUT_DIRECTORY ${PROJECT_RUNTIME_OUTPUT_DIR}
+    LIBRARY_OUTPUT_DIRECTORY ${PROJECT_LIBRARY_OUTPUT_DIR}
+    ARCHIVE_OUTPUT_DIRECTORY ${PROJECT_ARCHIVE_OUTPUT_DIR}
 )
 
 generate_export_header(${PROJECT_TARGET}
@@ -93,7 +102,7 @@ generate_export_header(${PROJECT_TARGET}
   NO_DEPRECATED_MACRO_NAME "${PROJECT_SHORT_NAME_UPPER}_OMIT_DEPRECATED"
   DEFINE_NO_DEPRECATED
 )
-if (QM_ENABLE_TESTS)
+if (QMSH_ENABLE_TESTS)
   target_compile_definitions(${PROJECT_TARGET}
     PUBLIC
       "${PROJECT_SHORT_NAME_UPPER}_STATIC_DEFINE"
@@ -103,36 +112,43 @@ endif()
 add_library(${PROJECT_TARGET}::${PROJECT_TARGET} ALIAS ${PROJECT_TARGET})
 #
 
-
 # Configure project executable target
 add_executable(${PROJECT_EXECUTABLE})
 target_sources(${PROJECT_EXECUTABLE}
   PRIVATE
     ${PROJECT_EXECUTABLE_SOURCES}
 )
+target_include_directories(${PROJECT_EXECUTABLE}
+  PRIVATE
+    "$<BUILD_INTERFACE:${PROJECT_BINARY_DIR}>"
+    ${RAPIDJSON_INCLUDE_DIRS}
+)
 target_link_libraries(${PROJECT_EXECUTABLE}
   PRIVATE
     ${PROJECT_TARGET}
     StepParse::StepParse
-    Boost::program_options
+    cxxopts::cxxopts
 )
 set_target_properties(${PROJECT_EXECUTABLE}
   PROPERTIES
     DEBUG_POSTFIX d
     CXX_EXTENSIONS NO
+    RUNTIME_OUTPUT_DIRECTORY ${PROJECT_RUNTIME_OUTPUT_DIR}
+    LIBRARY_OUTPUT_DIRECTORY ${PROJECT_LIBRARY_OUTPUT_DIR}
+    ARCHIVE_OUTPUT_DIRECTORY ${PROJECT_ARCHIVE_OUTPUT_DIR}
 )
 
 add_executable(${PROJECT_TARGET}::${PROJECT_EXECUTABLE} ALIAS ${PROJECT_EXECUTABLE})
 #
 
 # Add tests
-if (QM_ENABLE_TESTS)
+if (QMSH_ENABLE_TESTS)
   add_subdirectory(tests)
 endif()
 #
 
 
-# Install library
+# Install targets
 install(TARGETS ${PROJECT_TARGET} ${PROJECT_EXECUTABLE}
   EXPORT ${PROJECT_TARGET}_targets
   RUNTIME

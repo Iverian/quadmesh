@@ -1,5 +1,5 @@
-#ifndef QUADMESH_SRC_UTIL_TO_STRING_H_
-#define QUADMESH_SRC_UTIL_TO_STRING_H_
+#ifndef QUADMESH_SRC_UTIL_TO_STRING_HPP_
+#define QUADMESH_SRC_UTIL_TO_STRING_HPP_
 
 #include <sstream>
 #include <string>
@@ -28,4 +28,4 @@ string to_string(const T& t)
     return ss.str();
 }
 
-#endif // QUADMESH_SRC_UTIL_TO_STRING_H_
+#endif // QUADMESH_SRC_UTIL_TO_STRING_HPP_

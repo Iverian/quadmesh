@@ -1,15 +1,16 @@
-#include "curve_discretize.h"
+#include "curve_discretize.hpp"
 
 #include <gm/compare.hpp>
 #include <gm/line.hpp>
+
 #include <tuple>
 
-CurveDiscretize::CurveDiscretize(const QuadmeshConfig& conf)
+CurveDiscretize::CurveDiscretize(const qmsh::Config& conf)
     : approx_len_mesh_size_()
     , div_curvature_coeff_()
 {
     std::tie(approx_len_mesh_size_, div_curvature_coeff_)
-        = conf.get_discretize_coeffs();
+        = conf.discr_coeffs();
 }
 
 CurveDiscretize::~CurveDiscretize() = default;
@@ -18,23 +19,22 @@ std::vector<double> CurveDiscretize::param(const gm::AbstractCurve& curve,
                                            double pfront, double pback) const
 {
     std::vector<double> result;
-    bool reverse_flag = pback <= pfront;
+    auto reverse_flag = gm::cmp::le(pback, pfront);
     if (reverse_flag) {
         std::swap(pfront, pback);
     }
-    auto cdelta = (pback - pfront) / 6;
 
-    result.emplace_back(pfront);
-    while (result.back() < pback) {
-        auto& t = result.back();
-        auto dt = cdelta * curv_step(curve, t);
-        result.emplace_back(t + dt);
+    auto cdelta = (pback - pfront) / div_curvature_coeff_;
+    auto t = pfront;
+    while (gm::cmp::le(t, pback)) {
+        result.emplace_back(t);
+        t += cdelta * curv_step(curve, t);
     }
     result.back() = pback;
     result.shrink_to_fit();
 
     if (reverse_flag) {
-        reverse(begin(result), end(result));
+        std::reverse(begin(result), end(result));
     }
 
     return result;
@@ -67,7 +67,7 @@ CurveDiscretize::operator()(const gm::AbstractCurve& curve, double pfront,
 {
     auto v = param(curve, pfront, pback);
     std::vector<gm::Point> result(v.size());
-    transform(begin(v), end(v), begin(result),
-              [&curve](const auto& t) { return curve.f(t); });
+    std::transform(begin(v), end(v), begin(result),
+                   [&curve](const auto& t) { return curve.f(t); });
     return result;
 }

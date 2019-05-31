@@ -1,23 +1,24 @@
 #define _USE_MATH_DEFINES
 
+#include <fmt/ostream.h>
 #include <gtest/gtest.h>
 
-#include <fmt/ostream.h>
 #include <gm/curves.hpp>
 #include <gm/shell.hpp>
 #include <gm/surfaces.hpp>
-#include <mesh/quad_mesh_builder.h>
-#include <quadmesh/quadmesh_config.h>
+#include <mesh/quad_mesh_builder.hpp>
+#include <qmsh/config.hpp>
 #include <stp/parse.hpp>
-#include <util/debug.h>
-#include <util/itertools.h>
-#include <util/util.h>
+#include <util/debug.hpp>
+#include <util/itertools.hpp>
+#include <util/util.hpp>
 
 #include <cmath>
 #include <fstream>
 #include <memory>
 
 using namespace std;
+using namespace qmsh;
 
 TEST(TestSurfaceBuilder, test_cube)
 {
@@ -28,7 +29,7 @@ TEST(TestSurfaceBuilder, test_cube)
     sf << shell;
     sf.close();
 
-    auto builder = QuadMeshBuilder(shell, QuadmeshConfig());
+    auto builder = QuadMeshBuilder(shell, Config());
     auto mesh = builder.get().mesh();
 
     auto e = mesh->get_edge_soup();
@@ -51,7 +52,7 @@ TEST(TestSurfaceBuilder, test_parabcyl)
     sf << shell;
     sf.close();
 
-    auto builder = QuadMeshBuilder(shell, QuadmeshConfig());
+    auto builder = QuadMeshBuilder(shell, Config());
     auto mesh = builder.get().mesh();
 
     auto e = mesh->get_edge_soup();
@@ -72,7 +73,7 @@ TEST(TestSurfaceBuilder, test_spherecyl)
 
     ofstream("out/spherecyl_gm.json") << shell;
 
-    auto builder = QuadMeshBuilder(shell, QuadmeshConfig());
+    auto builder = QuadMeshBuilder(shell, Config());
     auto mesh = builder.get().mesh();
     ofstream("out/spherecyl_ms.json") << *mesh;
 
@@ -94,7 +95,7 @@ TEST(TestSurfaceBuilder, test_qcircle)
     sf << shell;
     sf.close();
 
-    auto builder = QuadMeshBuilder(shell, QuadmeshConfig());
+    auto builder = QuadMeshBuilder(shell, Config());
     auto mesh = builder.get().mesh();
 
     auto e = mesh->get_edge_soup();

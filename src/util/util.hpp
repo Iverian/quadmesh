@@ -1,5 +1,5 @@
-#ifndef QUADMESH_SRC_UTIL_UTIL_H_
-#define QUADMESH_SRC_UTIL_UTIL_H_
+#ifndef QUADMESH_SRC_UTIL_UTIL_HPP_
+#define QUADMESH_SRC_UTIL_UTIL_HPP_
 
 #include <array>
 #include <cmath>
@@ -24,4 +24,4 @@ std::ostream& operator<<(std::ostream& os, const std::array<T, N>& v)
     return os << "]";
 };
 
-#endif // QUADMESH_SRC_UTIL_UTIL_H_
+#endif // QUADMESH_SRC_UTIL_UTIL_HPP_
