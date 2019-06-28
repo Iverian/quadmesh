@@ -89,9 +89,7 @@ void SurfaceMeshBuilder::get()
             }
 
             if (to_erase) {
-                auto td = it;
-                ++it;
-                fronts_.erase(td);
+                it = fronts_.erase(it);
             } else {
                 ++it;
             }
