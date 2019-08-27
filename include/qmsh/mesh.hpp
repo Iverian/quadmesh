@@ -71,7 +71,7 @@ public:
 
         bool is_inserted() const noexcept
         {
-            return std::all_of(begin(), end(),
+            return std::all_of(std::begin(*this), std::end(*this),
                                [](auto& i) { return i->is_inserted(); });
         }
     };

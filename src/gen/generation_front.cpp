@@ -311,7 +311,7 @@ GenerationFront::primitive_viability(const std::vector<VtxType>& primitive,
                                           : ((m[0] - 2) / 2);
             n[2] = n[1];
             n[5] = (m[1] - 2 * n[1]) / 2;
-            n[0] = (m[0] + m[1] - 4 * n[2] - 2 * n[6]) / 2;
+            n[0] = (m[0] + m[1] - 4 * n[2] - 2 * n[5]) / 2;
             n[3] = (m[0] - m[1] + 2 * n[5]) / 2;
             n[4] = m[1] - 2 * n[1] - n[3];
             // TODO: разобраться, какое здесь должно быть условие

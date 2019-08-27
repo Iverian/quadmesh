@@ -34,5 +34,8 @@
 # Misc
 out/
 build/
-.vscode
+cmake-build-debug/
+cmake-build-release/
+.clangd/
+.vscode/
 compile_commands.json

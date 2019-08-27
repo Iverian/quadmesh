@@ -118,9 +118,9 @@ bool SurfaceMeshBuilder::closure_check(GenerationFront& front)
     }
     case 4: {
         auto it = std::begin(front);
-        Mesh::ElemPtr tmp{{it->global(), std::next(it, 1)->global(),
-                           std::next(it, 2)->global(),
-                           std::next(it, 3)->global()}};
+        Mesh::ElemPtr tmp {{it->global(), std::next(it, 1)->global(),
+                            std::next(it, 2)->global(),
+                            std::next(it, 3)->global()}};
         tmp = mesh_.add_element(tmp);
         result = true;
         break;
@@ -274,8 +274,8 @@ SurfaceMeshBuilder::triple(const FrontCycler& c, const FrontIter& i) const
 }
 
 std::pair<Triple, gm::Plane>
-SurfaceMeshBuilder::triple(FrontIter i, FrontIter j, FrontIter k) const
-{
+SurfaceMeshBuilder::triple(FrontIter i, FrontIter j, FrontIter k) const 
+{ 
     Triple result;
     auto t = gm::Plane(s_.tangent(s_.project(j->value())));
     result.p[0] = t.gproject(i->value());
@@ -633,7 +633,11 @@ SurfaceMeshBuilder::project_pentasect(FrontType t, const Triple& tr)
 
 [[nodiscard]] std::pair<GenerationFront, GenerationFront>
 SurfaceMeshBuilder::split_front(GenerationFront& front, FrontIter first,
-                                FrontIter last, FrontIter last2) {
+
+
+
+
+                                FrontIter last, FrontIter last2){
     auto c = cmms::make_cycler(front);
     GenerationFront a(front.type(), adj_), b(front.type(), adj_);
 
