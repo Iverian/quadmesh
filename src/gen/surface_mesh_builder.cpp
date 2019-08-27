@@ -274,8 +274,8 @@ SurfaceMeshBuilder::triple(const FrontCycler& c, const FrontIter& i) const
 }
 
 std::pair<Triple, gm::Plane>
-SurfaceMeshBuilder::triple(FrontIter i, FrontIter j, FrontIter k) const 
-{ 
+SurfaceMeshBuilder::triple(FrontIter i, FrontIter j, FrontIter k) const
+{
     Triple result;
     auto t = gm::Plane(s_.tangent(s_.project(j->value())));
     result.p[0] = t.gproject(i->value());
