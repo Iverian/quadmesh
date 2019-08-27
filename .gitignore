@@ -37,5 +37,6 @@ build/
 cmake-build-debug/
 cmake-build-release/
 .clangd/
+.ccls-cache/
 .vscode/
 compile_commands.json
