@@ -33,10 +33,7 @@
 
 # Misc
 out/
-build/
-cmake-build-debug/
-cmake-build-release/
-.clangd/
+build*/
 .ccls-cache/
 .vscode/
 compile_commands.json

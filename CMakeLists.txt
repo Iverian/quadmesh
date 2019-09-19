@@ -1,7 +1,14 @@
 cmake_minimum_required(VERSION 3.10)
-project(quadmesh VERSION 0.1.0 LANGUAGES CXX)
-list(INSERT CMAKE_MODULE_PATH 0 ${CMAKE_SOURCE_DIR}/cmake)
 
+set(PROJECT_TARGET quadmesh)
+set(PROJECT_EXECUTABLE quadmeshGen)
+set(PROJECT_SHORT_NAME qmsh)
+string(TOUPPER ${PROJECT_TARGET} PROJECT_TARGET_UPPER)
+string(TOUPPER ${PROJECT_SHORT_NAME} PROJECT_SHORT_NAME_UPPER)
+
+project(quadmesh VERSION 0.1.0 LANGUAGES CXX)
+
+list(INSERT CMAKE_MODULE_PATH 0 ${CMAKE_SOURCE_DIR}/cmake)
 option(QMSH_ENABLE_TESTS "Enable unit tests (requires GTest to be installed)" YES)
 
 
@@ -14,30 +21,21 @@ include(CMakePackageConfigHelpers)
 include(GenerateExportHeader)
 #
 
-
 # Declare dependencies
 find_package(fmt CONFIG REQUIRED)
 find_package(spdlog CONFIG REQUIRED)
 find_package(cxxopts CONFIG REQUIRED)
 find_package(RapidJSON CONFIG REQUIRED)
 
-find_package(Commons CONFIG REQUIRED)
-find_package(GeomModel CONFIG REQUIRED)
-find_package(StepParse CONFIG REQUIRED)
+find_package(commons CONFIG REQUIRED)
+find_package(geommodel CONFIG REQUIRED)
+find_package(stepparse CONFIG REQUIRED)
 #
-
 
 # Find source files
 set(PROJECT_RUNTIME_OUTPUT_DIR "${PROJECT_BINARY_DIR}/bin")
 set(PROJECT_LIBRARY_OUTPUT_DIR "${PROJECT_BINARY_DIR}/lib")
 set(PROJECT_ARCHIVE_OUTPUT_DIR "${PROJECT_LIBRARY_OUTPUT_DIR}")
-
-
-set(PROJECT_TARGET QuadMesh)
-set(PROJECT_EXECUTABLE QuadMeshGen)
-set(PROJECT_SHORT_NAME qmsh)
-string(TOUPPER ${PROJECT_TARGET} PROJECT_TARGET_UPPER)
-string(TOUPPER ${PROJECT_SHORT_NAME} PROJECT_SHORT_NAME_UPPER)
 
 file(GLOB_RECURSE
   PROJECT_SOURCES
@@ -83,8 +81,8 @@ target_compile_definitions(${PROJECT_TARGET}
 )
 target_link_libraries(${PROJECT_TARGET}
   PUBLIC
-    Commons::Commons
-    GeomModel::GeomModel
+    commons::commons
+    geommodel::geommodel
 )
 set_target_properties(${PROJECT_TARGET}
   PROPERTIES
@@ -126,7 +124,7 @@ target_include_directories(${PROJECT_EXECUTABLE}
 target_link_libraries(${PROJECT_EXECUTABLE}
   PRIVATE
     ${PROJECT_TARGET}
-    StepParse::StepParse
+    stepparse::stepparse
     cxxopts::cxxopts
 )
 set_target_properties(${PROJECT_EXECUTABLE}

@@ -10,4 +10,4 @@ if(NOT TARGET Quadmesh::Quadmesh)
     include("${Quadmesh_CMAKE_DIR}/QuadmeshTargets.cmake")
 endif()
 
-set(Quadmesh_LIBRARIES Quadmesh::GeomModel)
+set(Quadmesh_LIBRARIES Quadmesh::geommodel)

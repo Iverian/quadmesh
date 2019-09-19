@@ -22,8 +22,8 @@ if (ALLTESTS_SOURCES)
   target_link_libraries(AllTests
     PRIVATE
       ${PROJECT_TARGET}
-      GeomModel::GeomModel
-      StepParse::StepParse
+      geommodel::geommodel
+      stepparse::stepparse
       fmt::fmt
       GTest::GTest
       GTest::Main
