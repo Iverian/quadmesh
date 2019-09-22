@@ -16,6 +16,7 @@
 #include <rapidjson/rapidjson.h>
 
 #include <cmms/logging.hpp>
+#include <spdlog/spdlog.h>
 
 #include <cmath>
 #include <exception>
@@ -52,9 +53,9 @@ int main(int argc, char** argv)
 {
     auto logger = cmms::setup_logger(logger_id);
 #ifndef NDEBUG
-    cmms::set_level(spdlog::level::level_enum::debug);
+    spdlog::set_level(spdlog::level::level_enum::debug);
 #else  // NDEBUG
-    cmms::set_level(spdlog::level::level_enum::warn);
+    spdlog::set_level(spdlog::level::level_enum::warn);
 #endif // NDEBUG
 
     try {
