@@ -104,6 +104,8 @@ public:
 
     VtxPtr add_vertex(Vtx vtx);
     VtxPtr add_vertex(gm::Point value);
+    VtxPtr replace_vertex(VtxPtr from, VtxPtr to);
+    void remove_obsolete_vertices();
 
     VtxView get_view(gm::Point val) noexcept;
     VtxView get_view(VtxPtr ptr) noexcept;

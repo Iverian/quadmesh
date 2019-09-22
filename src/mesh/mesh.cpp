@@ -4,9 +4,9 @@
 #include <cmms/debug.hpp>
 #include <qmsh/serialize.hpp>
 
+#include <rapidjson/document.h>
 #include <rapidjson/ostreamwrapper.h>
 #include <rapidjson/writer.h>
-#include <rapidjson/document.h>
 
 #include <algorithm>
 #include <utility>
@@ -31,6 +31,41 @@ Mesh::VtxPtr Mesh::add_vertex(gm::Point vtx)
 {
     vertices_.push_back(Vtx(vertices_.size(), vtx));
     return &vertices_.back();
+}
+
+Mesh::VtxPtr Mesh::replace_vertex(Mesh::VtxPtr from, Mesh::VtxPtr to)
+{
+    for (auto& i : from->adjacent_) {
+        set_adjacent(to, i);
+        i->adjacent_.erase(from);
+    }
+    from->adjacent_.clear();
+    for (auto& elem : elems_) {
+        for (auto& vtx : elem) {
+            if (vtx == from->id_) {
+                vtx = to->id_;
+            }
+        }
+    }
+    for (auto& edge : edges_) {
+        for (auto& vtx : edge) {
+            if (vtx == from->id_) {
+                vtx = to->id_;
+            }
+        }
+    }
+    return to;
+}
+
+void Mesh::remove_obsolete_vertices()
+{
+    for (auto i = std::begin(vertices_); i != std::end(vertices_);) {
+        if (!i->adj_count()) {
+            i = vertices_.erase(i);
+        } else {
+            ++i;
+        }
+    }
 }
 
 Mesh::VtxView Mesh::get_view(gm::Point val) noexcept

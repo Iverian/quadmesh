@@ -35,7 +35,8 @@ static int _count = 0;
             fs::remove_all(path);                                             \
             fs::create_directory(path);                                       \
         }                                                                     \
-        qmsh::json_export({mesh_}, fmt::format("debug/{}.json", _count++));   \
+        qmsh::json_export({mesh_},                                            \
+                          fmt::format("debug/{:03d}.json", _count++));        \
     } while (0)
 #else
 #define debug_mesh()
@@ -95,6 +96,7 @@ void SurfaceMeshBuilder::get()
             }
         }
     }
+    // mesh_.remove_obsolete_vertices();
 }
 
 bool SurfaceMeshBuilder::closure_check(GenerationFront& front)
@@ -216,6 +218,9 @@ void SurfaceMeshBuilder::six_vertices_closure(GenerationFront& front)
         } else if (iv[0] == 3 && iv[1] == 2 && iv[2] == 1) {
             mesh_.add_element({vtx[0], vtx[1], vtx[4], vtx[5]});
             mesh_.add_element({vtx[1], vtx[2], vtx[3], vtx[4]});
+        } else if (iv[0] == 3 && iv[1] == 1 && iv[2] == 2) {
+            mesh_.add_element({vtx[0], vtx[5], vtx[2], vtx[1]});
+            mesh_.add_element({vtx[2], vtx[5], vtx[4], vtx[3]});
         } else {
             throw_fmt("unexpected intervals");
         }
@@ -307,15 +312,15 @@ FrontIter SurfaceMeshBuilder::build_row(FrontIter first,
                                         GenerationFront& front)
 {
     auto t = front.type();
-    auto is_end = false;
-    auto iterators_valid = false;
+    AddElementResult last_state {true, true};
 
     auto c = cmms::make_cycler(front);
     Mesh::ElemPtr tmp;
 
     buf_.clear();
 
-    // all side projection
+    // Случай, когда на фронте нет концов: создаем на ровном месте
+    // четырехугольник и выходим для перерасчета типов узлов
     if (first->type() == VtxType::SIDE) {
         auto ii = first;
         auto ir = c.next(first);
@@ -326,11 +331,14 @@ FrontIter SurfaceMeshBuilder::build_row(FrontIter first,
 
         tmp = {{ii->global(), ir->global(), vr, vi}};
         // TODO: почекать какую плоскость тут лучше использовать
-        if (add_element(front, ir, ii, tmp, is_end, pr)) {
+        if ((last_state = add_element(front, ir, ii, tmp, pr))) {
             front.insert(ir, tmp[2], false);
             front.insert(ir, tmp[3], false);
             first = ir;
+        } else if (!last_state.iterators_valid) {
+            first = std::end(front);
         }
+        return first;
     }
 
     auto ii = c.next(first);
@@ -345,7 +353,7 @@ FrontIter SurfaceMeshBuilder::build_row(FrontIter first,
             auto v = project_bisect(t, tr);
 
             tmp = {{iq->global(), ip->global(), ii->global(), v[0]}};
-            if (!add_element(front, ii, iq, tmp, is_end, p)) {
+            if (!(last_state = add_element(front, ii, iq, tmp, p))) {
                 break;
             }
             v[0] = tmp[3];
@@ -357,17 +365,14 @@ FrontIter SurfaceMeshBuilder::build_row(FrontIter first,
             auto v = project_trisect(t, tr);
 
             tmp = {{iq->global(), ip->global(), ii->global(), v[0]}};
-            if (!add_element(front, ii, iq, tmp, is_end, p)) {
+            if (!(last_state = add_element(front, ii, iq, tmp, p))) {
                 break;
             }
             v[0] = tmp[3];
             *ip = GenerationFront::Vtx(v[0], false);
-            if (is_end) {
-                break;
-            }
 
             tmp = {{ii->global(), v[2], v[1], v[0]}};
-            if (!add_element(front, ii, ip, tmp, is_end, p)) {
+            if (!(last_state = add_element(front, ii, ip, tmp, p))) {
                 break;
             }
             v[1] = tmp[2];
@@ -381,29 +386,23 @@ FrontIter SurfaceMeshBuilder::build_row(FrontIter first,
             auto v = project_pentasect(t, tr);
 
             tmp = {{iq->global(), ip->global(), ii->global(), v[0]}};
-            if (!add_element(front, ii, iq, tmp, is_end, p)) {
+            if (!(last_state = add_element(front, ii, iq, tmp, p))) {
                 break;
             }
             v[0] = tmp[3];
             *ip = GenerationFront::Vtx(v[0], false);
-            if (is_end) {
-                break;
-            }
 
             tmp = {{ii->global(), v[2], v[1], v[0]}};
-            if (!add_element(front, ii, ip, tmp, is_end, p)) {
+            if (!(last_state = add_element(front, ii, ip, tmp, p))) {
                 break;
             }
             v[1] = tmp[2];
             v[2] = tmp[1];
             front.insert(ii, v[1], false);
             front.insert(ii, v[2], false);
-            if (is_end) {
-                break;
-            }
 
             tmp = {{ii->global(), v[4], v[3], v[2]}};
-            if (!add_element(front, ii, c.prev(ii), tmp, is_end, p)) {
+            if (!(last_state = add_element(front, ii, c.prev(ii), tmp, p))) {
                 break;
             }
             v[3] = tmp[2];
@@ -415,15 +414,14 @@ FrontIter SurfaceMeshBuilder::build_row(FrontIter first,
         }
         case VtxType::END: {
             tmp = {{iq->global(), ip->global(), ii->global(), ir->global()}};
-            if (!add_element(front, ii, iq, tmp, is_end, p)) {
+            if (!(last_state = add_element(front, ii, iq, tmp, p))) {
                 break;
             }
             front.erase(ip);
             front.erase(ii);
             ii = ir;
-            iterators_valid = true;
-            is_end = true;
 
+            last_state.face_inserted = false;
             break;
         }
         case VtxType::NIL:
@@ -436,9 +434,10 @@ FrontIter SurfaceMeshBuilder::build_row(FrontIter first,
         }
         buf_.clear();
         // это нельзя написать в условии цикла т.к. там инкрементируется
-        // итератор, но при is_end=true все итераторы невалидны
-        if (is_end) {
-            if (!iterators_valid) {
+        // итератор, но при last_state.iterators_valid=false все итераторы
+        // невалидны
+        if (!last_state) {
+            if (!last_state.iterators_valid) {
                 ii = std::end(front);
             }
             break;
@@ -446,6 +445,111 @@ FrontIter SurfaceMeshBuilder::build_row(FrontIter first,
     }
 
     return ii;
+}
+
+SurfaceMeshBuilder::AddElementResult
+SurfaceMeshBuilder::add_element(GenerationFront& front, FrontIter cur,
+                                FrontIter prev2, Mesh::ElemPtr& tmp,
+                                const gm::Plane& tan)
+{
+    AddElementResult result {false, true};
+
+    if (!is_convex(tan, tmp)) {
+        std::vector<int> not_inserted_pos;
+        not_inserted_pos.reserve(elem_vtx);
+        for (int i = 0; i < elem_vtx; ++i) {
+            if (!tmp[i]->is_inserted()) {
+                not_inserted_pos.push_back(i);
+            }
+        }
+        if (not_inserted_pos.size() == 1) {
+            auto vtx_prev = tmp[(not_inserted_pos[0] - 1) % elem_vtx];
+            auto vtx_next = tmp[(not_inserted_pos[0] + 1) % elem_vtx];
+            vtx_prev->set_value(
+                s_.gproject((vtx_prev->value() + vtx_next->value()) / 2));
+            log_->debug("replacing vertex {} with {}", vtx_next->id(),
+                        vtx_prev->id());
+            mesh_.replace_vertex(vtx_next, vtx_prev);
+            front.erase(std::prev(cur));
+            front.erase(prev2);
+            debug_mesh();
+        } else {
+            append_to_mesh(tmp);
+            debug_mesh();
+            throw_fmt("last element is not convex / {}", tmp);
+        }
+        goto label_result;
+    }
+
+    if (!tmp[0]->is_inserted() || !tmp[1]->is_inserted()
+        || !tmp[2]->is_inserted() || !tmp[3]->is_inserted()) {
+        for (auto it = std::begin(fronts_); it != std::end(fronts_); ++it) {
+            auto& f = *it;
+            auto is_same = (&front == &f);
+
+            auto c = cmms::make_cycler(f);
+            auto i = std::begin(f);
+            decltype(i) j;
+            do {
+                j = c.next(i);
+                Mesh::EdgePtr v = {{i->global(), j->global()}};
+                for (size_t p = 0; p < elem_vtx; ++p) {
+                    auto q = (p + 1) % elem_vtx;
+
+                    auto& vp = tmp[p];
+                    auto& vq = tmp[q];
+                    if ((vp->is_inserted() && vq->is_inserted())
+                        || (v[0] == vp || v[0] == vq)
+                        || (v[1] == vp || v[1] == vq)) {
+                        continue;
+                    }
+
+                    if (auto r = edge_intersection({{vp, vq}}, v); r) {
+                        if (i->external() || j->external()) {
+                            // FIXME: если тут ничего не делать прога циклится
+                            goto label_result;
+                        }
+
+                        auto a = s_.gproject(
+                            (vq->value() + i->global()->value()) / 2);
+                        auto b = s_.gproject(
+                            (vp->value() + j->global()->value()) / 2);
+
+                        i->global()->set_value(std::move(a));
+                        j->global()->set_value(std::move(b));
+                        vp = i->global();
+                        vq = j->global();
+
+                        if (is_same) {
+                            auto [na, nb] = split_front(front, cur, j, prev2);
+                            front = std::move(na);
+                            fronts_.emplace_back(std::move(nb));
+                            log_->debug("split front");
+                        } else {
+                            merge_fronts(front, cur, f, i);
+                            fronts_.erase(it);
+                            log_->debug("merge fronts");
+                        }
+
+                        result.iterators_valid = false;
+                        goto label_result;
+                    }
+                }
+            } while (i = j, !c.is_first(i));
+        }
+    }
+    append_to_mesh(tmp);
+    result.face_inserted = true;
+
+label_result:
+    if (result) {
+        log_->debug("inserted element / {}", tmp);
+    } else {
+        log_->debug("element not inserted / {}", tmp);
+    }
+
+    debug_mesh();
+    return result;
 }
 
 bool SurfaceMeshBuilder::add_element(GenerationFront& front, FrontIter cur,
@@ -460,15 +564,34 @@ bool SurfaceMeshBuilder::add_element(GenerationFront& front, FrontIter cur,
     if (!is_convex(p, tmp)) {
         is_end = true;
         face_inserted = false;
-        log_->warn("element is not convex");
 
-        // FIXME: убрать
-        append_to_mesh(tmp);
-        debug_mesh();
-        exit(1);
-
+        std::vector<int> not_inserted_pos;
+        not_inserted_pos.reserve(elem_vtx);
+        for (int i = 0; i < elem_vtx; ++i) {
+            if (!tmp[i]->is_inserted()) {
+                not_inserted_pos.push_back(i);
+            }
+        }
+        if (not_inserted_pos.size() == 1) {
+            auto vtx_prev = tmp[(not_inserted_pos[0] - 1) % elem_vtx];
+            auto vtx_next = tmp[(not_inserted_pos[0] + 1) % elem_vtx];
+            auto mid
+                = s_.gproject((vtx_prev->value() + vtx_next->value()) / 2);
+            vtx_prev->set_value(mid);
+            log_->debug("replacing vertex {} with {}", vtx_next->id(),
+                        vtx_prev->id());
+            mesh_.replace_vertex(vtx_next, vtx_prev);
+            front.erase(std::prev(cur));
+            front.erase(prev2);
+            debug_mesh();
+        } else {
+            append_to_mesh(tmp);
+            debug_mesh();
+            throw_fmt("last element is not convex / {}", tmp);
+        }
         goto result;
     }
+
     if (!tmp[0]->is_inserted() || !tmp[1]->is_inserted()
         || !tmp[2]->is_inserted() || !tmp[3]->is_inserted()) {
         for (auto it = std::begin(fronts_); it != std::end(fronts_); ++it) {
@@ -496,6 +619,9 @@ bool SurfaceMeshBuilder::add_element(GenerationFront& front, FrontIter cur,
                         if (i->external() || j->external()) {
                             is_end = true;
                             face_inserted = false;
+                            append_to_mesh(tmp);
+                            debug_mesh();
+                            std::terminate();
                             goto result;
                         }
 
@@ -634,10 +760,8 @@ SurfaceMeshBuilder::project_pentasect(FrontType t, const Triple& tr)
 [[nodiscard]] std::pair<GenerationFront, GenerationFront>
 SurfaceMeshBuilder::split_front(GenerationFront& front, FrontIter first,
 
-
-
-
-                                FrontIter last, FrontIter last2){
+                                FrontIter last, FrontIter last2)
+{
     auto c = cmms::make_cycler(front);
     GenerationFront a(front.type(), adj_), b(front.type(), adj_);
 

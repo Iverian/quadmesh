@@ -229,8 +229,8 @@ GenerationFront::classify_primitive(bool force, const LocalAdjacent& adj,
 {
     auto result = PrimitiveType::NIL;
     if (auto opt = primitive_variants(force, adj); opt) {
-        std::pair minq{std::numeric_limits<ptrdiff_t>::max(),
-                       std::numeric_limits<double>::max()};
+        std::pair minq {std::numeric_limits<ptrdiff_t>::max(),
+                        std::numeric_limits<double>::max()};
 
         auto& prod = opt.value();
         auto& best_primitive = prod.front();
@@ -356,9 +356,8 @@ GenerationFront::primitive_quality(const std::vector<VtxType>& primitive,
     double angle_deviation = 0;
 
     for (; p != pend && v != vend; ++p, ++v) {
-        irregular_count += std::abs(
-            ptrdiff_t(adj.adjcount(v->global()) + insert_number(v->type()))
-            - elem_vtx);
+        irregular_count += std::abs(ptrdiff_t(adj.adjcount(v->global())
+                                              + insert_number(*p) - elem_vtx));
         angle_deviation += std::abs(v->iangle() - perfect_iangle(*p));
     }
 

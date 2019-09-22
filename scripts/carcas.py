@@ -1,4 +1,4 @@
-#!/c/Python37/python
+#!/usr/bin/env python3
 import os
 import sys
 import time
@@ -7,11 +7,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import argparse as ap
 
-from sys import argv
 from mpl_toolkits.mplot3d import Axes3D
-
-from watchdog.observers import Observer
-from watchdog.events import FileSystemEventHandler
 
 
 class Vertex(object):
@@ -36,14 +32,17 @@ def draw_edges(ax, vtxs, edges):
 
 
 def carcas(ax, data):
-    vtxs = {i["id"]: Vertex(i["value"], i["adjacent"]) for i in data["vertices"]}
+    vtxs = {
+        i["id"]: Vertex(i["value"], i["adjacent"])
+        for i in data["vertices"]
+    }
     edges = data["edges"]
 
     draw_edges(ax, vtxs, edges)
     draw_vertices(ax, vtxs)
 
 
-#%%
+# %%
 if __name__ == "__main__":
     p = ap.ArgumentParser("carcas")
     p.add_argument("file")

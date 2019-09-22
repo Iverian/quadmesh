@@ -53,6 +53,15 @@ public:
     void get();
 
 private:
+    struct AddElementResult {
+        bool face_inserted;
+        bool iterators_valid;
+        operator bool() const noexcept
+        {
+            return face_inserted;
+        }
+    };
+
     std::pair<Triple, gm::Plane> triple(const FrontCycle& it) const;
     std::pair<Triple, gm::Plane> triple(const FrontCycler& c,
                                         const FrontIter& i) const;
@@ -68,10 +77,11 @@ private:
     std::array<Mesh::VtxPtr, 5> project_pentasect(FrontType t,
                                                   const Triple& tr);
 
-
     FrontIter build_row(FrontIter first, GenerationFront& front);
-    bool add_element(GenerationFront& front, FrontIter cur, FrontIter prev2,
-                     Mesh::ElemPtr& tmp, bool& is_end, const gm::Plane& p);
+    AddElementResult add_element(GenerationFront& front, FrontIter cur,
+                                 FrontIter prev2, Mesh::ElemPtr& tmp,
+                                 const gm::Plane& tan);
+
     void append_to_mesh(Mesh::ElemPtr& tmp);
 
     bool closure_check(GenerationFront& front);
