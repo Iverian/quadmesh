@@ -96,7 +96,7 @@ void SurfaceMeshBuilder::get()
             }
         }
     }
-    // mesh_.remove_obsolete_vertices();
+    mesh_.remove_obsolete_vertices();
 }
 
 bool SurfaceMeshBuilder::closure_check(GenerationFront& front)
@@ -503,13 +503,34 @@ SurfaceMeshBuilder::add_element(GenerationFront& front, FrontIter cur,
                         || (v[1] == vp || v[1] == vq)) {
                         continue;
                     }
-
                     if (auto r = edge_intersection({{vp, vq}}, v); r) {
                         if (i->external() || j->external()) {
-                            // FIXME: если тут ничего не делать прога циклится
-                            goto label_result;
+                            auto info = r.value();
+                            switch (info.pcase) {
+                            case ProximityCase::END_TO_END:
+                            case ProximityCase::END_TO_MID: {
+                                // TODO: Тут нет пересечений, но лучше
+                                //  подвинуть новые точки для улучшения
+                                //  качества сетки
+                                goto label_insert;
+                            }
+                            case ProximityCase::MID_TO_MID: {
+                                // FIXME: Настоящее пересечние, нужно
+                                //  обработать
+                                append_to_mesh(tmp);
+                                debug_mesh();
+                                std::terminate();
+                                break;
+                            }
+                            }
                         }
-
+#ifndef NDEBUG
+                        if (_count >= 56) {
+                            append_to_mesh(tmp);
+                            debug_mesh();
+                            std::terminate();
+                        }
+#endif
                         auto a = s_.gproject(
                             (vq->value() + i->global()->value()) / 2);
                         auto b = s_.gproject(
@@ -538,6 +559,7 @@ SurfaceMeshBuilder::add_element(GenerationFront& front, FrontIter cur,
             } while (i = j, !c.is_first(i));
         }
     }
+label_insert:
     append_to_mesh(tmp);
     result.face_inserted = true;
 
@@ -552,122 +574,6 @@ label_result:
     return result;
 }
 
-bool SurfaceMeshBuilder::add_element(GenerationFront& front, FrontIter cur,
-                                     FrontIter prev2, Mesh::ElemPtr& tmp,
-                                     bool& is_end, const gm::Plane& p)
-{
-    auto face_inserted = false;
-
-    if (is_end) {
-        goto result;
-    }
-    if (!is_convex(p, tmp)) {
-        is_end = true;
-        face_inserted = false;
-
-        std::vector<int> not_inserted_pos;
-        not_inserted_pos.reserve(elem_vtx);
-        for (int i = 0; i < elem_vtx; ++i) {
-            if (!tmp[i]->is_inserted()) {
-                not_inserted_pos.push_back(i);
-            }
-        }
-        if (not_inserted_pos.size() == 1) {
-            auto vtx_prev = tmp[(not_inserted_pos[0] - 1) % elem_vtx];
-            auto vtx_next = tmp[(not_inserted_pos[0] + 1) % elem_vtx];
-            auto mid
-                = s_.gproject((vtx_prev->value() + vtx_next->value()) / 2);
-            vtx_prev->set_value(mid);
-            log_->debug("replacing vertex {} with {}", vtx_next->id(),
-                        vtx_prev->id());
-            mesh_.replace_vertex(vtx_next, vtx_prev);
-            front.erase(std::prev(cur));
-            front.erase(prev2);
-            debug_mesh();
-        } else {
-            append_to_mesh(tmp);
-            debug_mesh();
-            throw_fmt("last element is not convex / {}", tmp);
-        }
-        goto result;
-    }
-
-    if (!tmp[0]->is_inserted() || !tmp[1]->is_inserted()
-        || !tmp[2]->is_inserted() || !tmp[3]->is_inserted()) {
-        for (auto it = std::begin(fronts_); it != std::end(fronts_); ++it) {
-            auto& f = *it;
-            auto is_same = (&front == &f);
-
-            auto c = cmms::make_cycler(f);
-            auto i = std::begin(f);
-            decltype(i) j;
-            do {
-                j = c.next(i);
-                Mesh::EdgePtr v = {{i->global(), j->global()}};
-                for (size_t p = 0; p < elem_vtx; ++p) {
-                    auto q = (p + 1) % elem_vtx;
-
-                    auto& vp = tmp[p];
-                    auto& vq = tmp[q];
-                    if ((vp->is_inserted() && vq->is_inserted())
-                        || (v[0] == vp || v[0] == vq)
-                        || (v[1] == vp || v[1] == vq)) {
-                        continue;
-                    }
-
-                    if (auto r = edge_intersection({{vp, vq}}, v); r) {
-                        if (i->external() || j->external()) {
-                            is_end = true;
-                            face_inserted = false;
-                            append_to_mesh(tmp);
-                            debug_mesh();
-                            std::terminate();
-                            goto result;
-                        }
-
-                        auto a = s_.gproject(
-                            (vq->value() + i->global()->value()) / 2);
-                        auto b = s_.gproject(
-                            (vp->value() + j->global()->value()) / 2);
-
-                        i->global()->set_value(std::move(a));
-                        j->global()->set_value(std::move(b));
-                        vp = i->global();
-                        vq = j->global();
-
-                        if (is_same) {
-                            auto [na, nb] = split_front(front, cur, j, prev2);
-                            front = std::move(na);
-                            fronts_.emplace_back(std::move(nb));
-                            log_->debug("split front");
-                        } else {
-                            merge_fronts(front, cur, f, i);
-                            fronts_.erase(it);
-                            log_->debug("merge fronts");
-                        }
-
-                        is_end = true;
-                        face_inserted = false;
-                        goto result;
-                    }
-                }
-            } while (i = j, !c.is_first(i));
-        }
-    }
-    append_to_mesh(tmp);
-    face_inserted = true;
-
-result:
-    if (face_inserted) {
-        log_->debug("inserted element / {}", tmp);
-    } else {
-        log_->debug("element not inserted / {}", tmp);
-    }
-
-    debug_mesh();
-    return face_inserted;
-}
-
 void SurfaceMeshBuilder::append_to_mesh(Mesh::ElemPtr& tmp)
 {
     tmp = mesh_.add_element(tmp);
@@ -676,7 +582,7 @@ void SurfaceMeshBuilder::append_to_mesh(Mesh::ElemPtr& tmp)
     }
 }
 
-std::optional<std::pair<gm::Point, gm::Point>>
+std::optional<DistResult>
 SurfaceMeshBuilder::edge_intersection(const Mesh::EdgePtr& a,
                                       const Mesh::EdgePtr& b)
 {
@@ -684,22 +590,18 @@ SurfaceMeshBuilder::edge_intersection(const Mesh::EdgePtr& a,
     static constexpr auto f_angle = 0.25;
     static constexpr auto f_case = 0.1;
 
-    std::optional<std::pair<gm::Point, gm::Point>> result = std::nullopt;
     auto la = gm::Line(gm::Vec(a[0]->value(), a[1]->value()), a[0]->value());
     auto lb = gm::Line(gm::Vec(b[0]->value(), b[1]->value()), b[0]->value());
-    auto [d, pa, pb, pcase] = unary_segment_dist(la, lb);
+    auto r = unary_segment_dist(la, lb);
 
     auto uv = gm::cos(la.dir(), lb.dir());
     auto w = (gm::dist(a[0]->value(), a[1]->value())
               + gm::dist(b[0]->value(), b[1]->value()))
         / 2;
     auto s = (sqrt(6) - 2) * w;
-    auto c = f_dist * d / s + f_angle * (1 - uv) + f_case * int(pcase);
+    auto c = f_dist * r.dist / s + f_angle * (1 - uv) + f_case * int(r.pcase);
 
-    if (c < 1) {
-        result = {la.f(pa), lb.f(pb)};
-    }
-    return result;
+    return (c < 1) ? std::optional<DistResult>(r) : std::nullopt;
 }
 
 Mesh::VtxPtr SurfaceMeshBuilder::tmp(gm::Point vertex)
@@ -759,7 +661,6 @@ SurfaceMeshBuilder::project_pentasect(FrontType t, const Triple& tr)
 
 [[nodiscard]] std::pair<GenerationFront, GenerationFront>
 SurfaceMeshBuilder::split_front(GenerationFront& front, FrontIter first,
-
                                 FrontIter last, FrontIter last2)
 {
     auto c = cmms::make_cycler(front);
@@ -792,7 +693,6 @@ void SurfaceMeshBuilder::merge_fronts(GenerationFront& a, FrontIter apos,
 
 TempVertexBuffer::TempVertexBuffer()
     : buf_()
-    , pos_(0)
 {
     buf_.reserve(init_size);
 }
@@ -806,7 +706,6 @@ Mesh::VtxPtr TempVertexBuffer::operator()(gm::Point vertex)
 void TempVertexBuffer::clear() noexcept
 {
     buf_.clear();
-    pos_ = 0;
 }
 
 } // namespace qmsh

@@ -3,6 +3,7 @@
 
 #include "generation_front.hpp"
 #include "local_adjacent.hpp"
+#include "util.hpp"
 
 #include <cmms/logging.hpp>
 #include <gm/abstract_surface.hpp>
@@ -41,7 +42,6 @@ public:
 
 private:
     std::vector<Mesh::Vtx> buf_;
-    size_t pos_;
 };
 
 class SurfaceMeshBuilder {
@@ -87,8 +87,8 @@ private:
     bool closure_check(GenerationFront& front);
     void six_vertices_closure(GenerationFront& front);
 
-    std::optional<std::pair<gm::Point, gm::Point>>
-    edge_intersection(const Mesh::EdgePtr& a, const Mesh::EdgePtr& b);
+    std::optional<DistResult> edge_intersection(const Mesh::EdgePtr& a,
+                                                const Mesh::EdgePtr& b);
 
     [[nodiscard]] std::pair<GenerationFront, GenerationFront>
     split_front(GenerationFront& front, FrontIter first, FrontIter last,
