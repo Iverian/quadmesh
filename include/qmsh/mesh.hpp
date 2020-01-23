@@ -17,28 +17,6 @@
 #include <ostream>
 #include <set>
 #include <type_traits>
-#include <unordered_set>
-
-namespace std {
-
-template <class T, size_t N>
-struct hash<std::array<T, N>> {
-    using key_type = std::array<T, N>;
-
-    size_t operator()(const key_type& key) const
-    {
-        size_t result = 21467;
-        for (auto& i : key) {
-            result = (result << 1) ^ impl_(i);
-        }
-        return result;
-    }
-
-private:
-    hash<T> impl_;
-};
-
-} // namespace std
 
 namespace qmsh {
 
@@ -51,7 +29,6 @@ public:
     static constexpr VtxId npos = -1;
 
     class Vtx;
-    class VtxView;
 
     using VertexContainer = std::list<Vtx>;
     using VtxPtr = VertexContainer::pointer;
@@ -103,12 +80,9 @@ public:
     Mesh();
 
     VtxPtr add_vertex(Vtx vtx);
-    VtxPtr add_vertex(gm::Point value);
+    VtxPtr add_vertex(gm::Point value, bool external=false);
     VtxPtr replace_vertex(VtxPtr from, VtxPtr to);
     void remove_obsolete_vertices();
-
-    VtxView get_view(gm::Point val) noexcept;
-    VtxView get_view(VtxPtr ptr) noexcept;
 
     ElemPtr add_element(ElemPtr elem);
     EdgePtr add_edge(EdgePtr edge);
@@ -138,6 +112,7 @@ public:
     explicit Vtx(gm::Point vertex = {}) noexcept;
 
     bool is_inserted() const noexcept;
+    bool is_external() const noexcept;
     VtxId id() const noexcept;
 
     const gm::Point& value() const noexcept;
@@ -153,35 +128,13 @@ public:
                                 rapidjson::Value::AllocatorType& alloc) const;
 
 private:
-    Vtx(VtxId id, gm::Point vertex) noexcept;
+    Vtx(VtxId id, bool external, gm::Point vertex) noexcept;
     void set_id(VtxId new_id);
 
     VtxId id_;
+    bool external_;
     gm::Point vertex_;
     AdjacentContainer adjacent_;
-};
-
-class QMSH_EXPORT Mesh::VtxView {
-    friend class Mesh;
-
-public:
-    gm::Point& get() noexcept;
-    const gm::Point& get() const noexcept;
-    gm::Point& operator*() noexcept;
-    const gm::Point& operator*() const noexcept;
-    gm::Point* operator->() noexcept;
-    const gm::Point* operator->() const noexcept;
-
-    operator bool() const noexcept;
-    VtxPtr update();
-
-private:
-    VtxView(gm::Point val, Mesh& parent) noexcept;
-    VtxView(Mesh::VtxPtr ptr, Mesh& parent) noexcept;
-
-    gm::Point val_;
-    Mesh::VtxPtr ptr_;
-    Mesh* parent_;
 };
 
 } // namespace qmsh

@@ -14,6 +14,7 @@
 #include <list>
 #include <ostream>
 #include <string>
+#include <unordered_set>
 #include <utility>
 
 namespace qmsh {
@@ -53,6 +54,7 @@ public:
     using Iter = VtxContainer::iterator;
     using Cycle = CyclicIterator<Iter>;
     using Row = std::pair<Iter, Iter>;
+    using VtxCache = std::unordered_set<Mesh::VtxPtr>;
 
     using iterator = VtxContainer::iterator;
     using const_iterator = VtxContainer::const_iterator;
@@ -67,9 +69,14 @@ public:
     FrontType type() const noexcept;
     Cycle cycle();
 
-    GenerationFront& insert(Iter pos, Mesh::VtxPtr ptr, bool external = false);
+    const VtxCache& cache();
+    bool is_vertex_in_front(const Vtx& vtx) const;
+    bool is_vertex_in_front(Mesh::VtxPtr vptr) const;
+
+    GenerationFront& insert(Iter pos, Mesh::VtxPtr ptr);
     GenerationFront& erase(Iter pos);
     GenerationFront& clear() noexcept;
+
     bool empty() const noexcept;
     size_t size() const noexcept;
 
@@ -98,6 +105,7 @@ public:
 
 private:
     FrontType type_;
+    VtxCache cache_;
     VtxContainer vtxs_;
 };
 
@@ -106,21 +114,14 @@ using FrontCycle = GenerationFront::Cycle;
 using FrontCycler = cmms::Cycler<FrontIter>;
 using FrontRow = GenerationFront::Row;
 
-// [[nodiscard]] std::pair<GenerationFront, GenerationFront>
-// split_front(GenerationFront& front, FrontIter first, FrontIter last,
-//             FrontIter last2);
-// void merge_fronts(GenerationFront& a, FrontIter apos, GenerationFront& b,
-//                   FrontIter bpos);
-
 Mesh::EdgePtr edge(const FrontCycle& it);
 Mesh::EdgePtr edge(const FrontCycler& c, const FrontIter& it);
 
 class GenerationFront::Vtx {
 public:
-    explicit Vtx(Mesh::VtxPtr global, bool external = false);
+    explicit Vtx(Mesh::VtxPtr global);
 
     gm::Point value() const noexcept;
-    bool external() const noexcept;
     double iangle() const noexcept;
     VtxType type() const noexcept;
     bool is_ambiguous() const noexcept;
@@ -137,7 +138,6 @@ private:
     void base_type(const Config::AngTol& at) noexcept;
 
     Mesh::VtxPtr global_;
-    bool external_;
     double iangle_;
     VtxType type_;
 };

@@ -75,7 +75,7 @@ Mesh::VtxPtr MeshBuilder::mesh_vertex(gm::Point value)
 {
     auto [it, flag] = vtxs_.emplace(value, nullptr);
     if (flag) {
-        it->second = mesh_.add_vertex(value);
+        it->second = mesh_.add_vertex(value, true);
         log_->debug("inserted new vertex / {}", value);
     } else {
         log_->debug("point matched existing vertex / [{}, {}]", value,
@@ -96,7 +96,7 @@ MeshBuilder::mesh_edge(const gm::Edge* edge_ptr)
         r.emplace_back(mesh_vertex(v.front()));
         for (auto j = std::next(std::begin(v)); j != std::prev(std::end(v));
              ++j) {
-            r.emplace_back(mesh_.add_vertex(*j));
+            r.emplace_back(mesh_.add_vertex(*j, true));
         }
         r.emplace_back(mesh_vertex(v.back()));
         log_->debug("inserted new edge / {}", *edge_ptr);

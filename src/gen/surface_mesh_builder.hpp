@@ -82,6 +82,15 @@ private:
                                  FrontIter prev2, Mesh::ElemPtr& tmp,
                                  const gm::Plane& tan);
 
+    void smooth_front(const GenerationFront& front, int depth) const;
+    void smooth_boundary_nodes(std::vector<Mesh::VtxPtr> nodes_to_smooth,
+                               const GenerationFront& front, int depth) const;
+    void smooth_boundary_node(Mesh::VtxPtr vptr,
+                              const GenerationFront& front) const;
+    void smooth_internal_node(Mesh::VtxPtr vptr, const GenerationFront& front,
+                              int depth,
+                              GenerationFront::VtxCache& smoothed_nodes) const;
+
     void append_to_mesh(Mesh::ElemPtr& tmp);
 
     bool closure_check(GenerationFront& front);

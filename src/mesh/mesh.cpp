@@ -27,9 +27,9 @@ Mesh::VtxPtr Mesh::add_vertex(Vtx vtx)
     return &vertices_.back();
 }
 
-Mesh::VtxPtr Mesh::add_vertex(gm::Point vtx)
+Mesh::VtxPtr Mesh::add_vertex(gm::Point vtx, bool external)
 {
-    vertices_.push_back(Vtx(vertices_.size(), vtx));
+    vertices_.push_back(Vtx(vertices_.size(), external, vtx));
     return &vertices_.back();
 }
 
@@ -66,16 +66,6 @@ void Mesh::remove_obsolete_vertices()
             ++i;
         }
     }
-}
-
-Mesh::VtxView Mesh::get_view(gm::Point val) noexcept
-{
-    return VtxView(val, *this);
-}
-
-Mesh::VtxView Mesh::get_view(VtxPtr ptr) noexcept
-{
-    return VtxView(ptr, *this);
 }
 
 Mesh::EdgePtr Mesh::add_edge(EdgePtr edge)
@@ -171,12 +161,14 @@ rapidjson::Value& Mesh::serialize(rapidjson::Value& result,
 
 Mesh::Vtx::Vtx(gm::Point vertex) noexcept
     : id_(Mesh::npos)
+    , external_(false)
     , vertex_(vertex)
 {
 }
 
-Mesh::Vtx::Vtx(VtxId id, gm::Point vertex) noexcept
+Mesh::Vtx::Vtx(VtxId id, bool external, gm::Point vertex) noexcept
     : id_(id)
+    , external_(external)
     , vertex_(vertex)
 {
 }
@@ -192,6 +184,11 @@ void Mesh::Vtx::set_id(VtxId new_id)
 bool Mesh::Vtx::is_inserted() const noexcept
 {
     return id_ != Mesh::npos;
+}
+
+bool Mesh::Vtx::is_external() const noexcept
+{
+    return external_;
 }
 
 Mesh::VtxId Mesh::Vtx::id() const noexcept
@@ -251,70 +248,11 @@ Mesh::Vtx::serialize(rapidjson::Value& result,
         value.PushBack(i, alloc);
     }
     result.AddMember("id", id_, alloc);
+    result.AddMember("external", external_, alloc);
     result.AddMember("adjacent", adjacent, alloc);
     result.AddMember("value", value, alloc);
 
     return result;
-}
-
-gm::Point& Mesh::VtxView::get() noexcept
-{
-    return val_;
-}
-
-const gm::Point& Mesh::VtxView::get() const noexcept
-{
-    return val_;
-}
-
-gm::Point& Mesh::VtxView::operator*() noexcept
-{
-    return val_;
-}
-
-const gm::Point& Mesh::VtxView::operator*() const noexcept
-{
-    return val_;
-}
-
-gm::Point* Mesh::VtxView::operator->() noexcept
-{
-    return &val_;
-}
-
-const gm::Point* Mesh::VtxView::operator->() const noexcept
-{
-    return &val_;
-}
-
-Mesh::VtxPtr Mesh::VtxView::update()
-{
-    if (ptr_) {
-        ptr_->set_value(val_);
-    } else {
-        ptr_ = parent_->add_vertex(val_);
-    }
-
-    return ptr_;
-}
-
-Mesh::VtxView::operator bool() const noexcept
-{
-    return bool(ptr_);
-}
-
-Mesh::VtxView::VtxView(gm::Point val, Mesh& parent) noexcept
-    : val_(val)
-    , ptr_(nullptr)
-    , parent_(&parent)
-{
-}
-
-Mesh::VtxView::VtxView(Mesh::VtxPtr ptr, Mesh& parent) noexcept
-    : val_(ptr->value())
-    , ptr_(ptr)
-    , parent_(&parent)
-{
 }
 
 } // namespace qmsh

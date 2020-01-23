@@ -1,7 +1,7 @@
 #define _USE_MATH_DEFINES
 
-#include "surface_mesh_builder.hpp"
 #include "minimizer.hpp"
+#include "surface_mesh_builder.hpp"
 #include "util.hpp"
 
 #include <cmms/cycler.hpp>
@@ -23,6 +23,7 @@
 #include <cmath>
 #include <filesystem>
 #include <utility>
+#include <vector>
 
 namespace fs = std::filesystem;
 
@@ -141,6 +142,66 @@ bool SurfaceMeshBuilder::closure_check(GenerationFront& front)
         front.clear();
     }
     return result;
+}
+
+void SurfaceMeshBuilder::smooth_front(const GenerationFront& front,
+                                      int depth) const
+{
+    GenerationFront::VtxCache internal_node_cache;
+
+    for (auto& i : front) {
+        auto vptr = i.global();
+        smooth_boundary_node(vptr, front);
+        if (depth > 0) {
+            for (auto& adj : *vptr) {
+                smooth_internal_node(vptr, front, depth - 1,
+                                     internal_node_cache);
+            }
+        }
+    }
+}
+
+void SurfaceMeshBuilder::smooth_boundary_nodes(
+    std::vector<Mesh::VtxPtr> nodes_to_smooth, const GenerationFront& front,
+    int depth) const
+{
+    GenerationFront::VtxCache internal_node_cache;
+
+    for (auto& vptr : nodes_to_smooth) {
+        smooth_boundary_node(vptr, front);
+        if (depth > 0) {
+            for (auto& adj : *vptr) {
+                smooth_internal_node(adj, front, depth, internal_node_cache);
+            }
+        }
+    }
+}
+
+void SurfaceMeshBuilder::smooth_boundary_node(
+    Mesh::VtxPtr vptr, const GenerationFront& front) const
+{
+    if (vptr->is_external() || front.is_vertex_in_front(vptr)) {
+        return;
+    }
+
+    // TODO: smooth node
+}
+
+void SurfaceMeshBuilder::smooth_internal_node(
+    Mesh::VtxPtr vptr, const GenerationFront& front, int depth,
+    GenerationFront::VtxCache& smoothed_nodes) const
+{
+    if (depth <= 0 || vptr->is_external() || front.is_vertex_in_front(vptr)
+        || smoothed_nodes.find(vptr) != std::end(smoothed_nodes)) {
+        return;
+    }
+    smoothed_nodes.insert(vptr);
+
+    // TODO: smooth node
+
+    for (auto& adj : *vptr) {
+        smooth_internal_node(vptr, front, depth - 1, smoothed_nodes);
+    }
 }
 
 void SurfaceMeshBuilder::six_vertices_closure(GenerationFront& front)
@@ -332,8 +393,8 @@ FrontIter SurfaceMeshBuilder::build_row(FrontIter first,
         tmp = {{ii->global(), ir->global(), vr, vi}};
         // TODO: почекать какую плоскость тут лучше использовать
         if ((last_state = add_element(front, ir, ii, tmp, pr))) {
-            front.insert(ir, tmp[2], false);
-            front.insert(ir, tmp[3], false);
+            front.insert(ir, tmp[2]);
+            front.insert(ir, tmp[3]);
             first = ir;
         } else if (!last_state.iterators_valid) {
             first = std::end(front);
@@ -357,7 +418,7 @@ FrontIter SurfaceMeshBuilder::build_row(FrontIter first,
                 break;
             }
             v[0] = tmp[3];
-            *ip = GenerationFront::Vtx(v[0], false);
+            *ip = GenerationFront::Vtx(v[0]);
 
             break;
         }
@@ -369,7 +430,7 @@ FrontIter SurfaceMeshBuilder::build_row(FrontIter first,
                 break;
             }
             v[0] = tmp[3];
-            *ip = GenerationFront::Vtx(v[0], false);
+            *ip = GenerationFront::Vtx(v[0]);
 
             tmp = {{ii->global(), v[2], v[1], v[0]}};
             if (!(last_state = add_element(front, ii, ip, tmp, p))) {
@@ -377,8 +438,8 @@ FrontIter SurfaceMeshBuilder::build_row(FrontIter first,
             }
             v[1] = tmp[2];
             v[2] = tmp[1];
-            front.insert(ii, v[1], false);
-            front.insert(ii, v[2], false);
+            front.insert(ii, v[1]);
+            front.insert(ii, v[2]);
 
             break;
         }
@@ -390,7 +451,7 @@ FrontIter SurfaceMeshBuilder::build_row(FrontIter first,
                 break;
             }
             v[0] = tmp[3];
-            *ip = GenerationFront::Vtx(v[0], false);
+            *ip = GenerationFront::Vtx(v[0]);
 
             tmp = {{ii->global(), v[2], v[1], v[0]}};
             if (!(last_state = add_element(front, ii, ip, tmp, p))) {
@@ -398,8 +459,8 @@ FrontIter SurfaceMeshBuilder::build_row(FrontIter first,
             }
             v[1] = tmp[2];
             v[2] = tmp[1];
-            front.insert(ii, v[1], false);
-            front.insert(ii, v[2], false);
+            front.insert(ii, v[1]);
+            front.insert(ii, v[2]);
 
             tmp = {{ii->global(), v[4], v[3], v[2]}};
             if (!(last_state = add_element(front, ii, c.prev(ii), tmp, p))) {
@@ -407,8 +468,8 @@ FrontIter SurfaceMeshBuilder::build_row(FrontIter first,
             }
             v[3] = tmp[2];
             v[4] = tmp[1];
-            front.insert(ii, v[3], false);
-            front.insert(ii, v[4], false);
+            front.insert(ii, v[3]);
+            front.insert(ii, v[4]);
 
             break;
         }
@@ -504,7 +565,7 @@ SurfaceMeshBuilder::add_element(GenerationFront& front, FrontIter cur,
                         continue;
                     }
                     if (auto r = edge_intersection({{vp, vq}}, v); r) {
-                        if (i->external() || j->external()) {
+                        if (v[0]->is_external() || v[1]->is_external()) {
                             auto info = r.value();
                             switch (info.pcase) {
                             case ProximityCase::END_TO_END:
@@ -669,11 +730,11 @@ SurfaceMeshBuilder::split_front(GenerationFront& front, FrontIter first,
     auto aend = std::end(a);
     auto it = first;
     for (; it != last; it = c.next(it)) {
-        a.insert(aend, it->global(), it->external());
+        a.insert(aend, it->global());
     }
     auto bend = std::end(b);
     for (; it != last2; it = c.next(it)) {
-        b.insert(bend, it->global(), it->external());
+        b.insert(bend, it->global());
     }
 
     return std::make_pair(a, b);
@@ -686,7 +747,7 @@ void SurfaceMeshBuilder::merge_fronts(GenerationFront& a, FrontIter apos,
 
     auto it = bpos;
     do {
-        a.insert(apos, it->global(), it->external());
+        a.insert(apos, it->global());
     } while (it = c.prev(it), it != bpos);
     b.clear();
 }

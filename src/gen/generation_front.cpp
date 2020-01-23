@@ -19,6 +19,7 @@ GenerationFront::GenerationFront(FrontType type, LocalAdjacent& adj,
                                  bool same_sense,
                                  const std::vector<Mesh::VtxPtr>& vtxs)
     : type_(type)
+    , cache_()
     , vtxs_()
 {
     if (!vtxs.empty()) {
@@ -28,10 +29,16 @@ GenerationFront::GenerationFront(FrontType type, LocalAdjacent& adj,
         adj.set_adjacent(first, last);
         if (same_sense) {
             std::transform(first, last, std::back_inserter(vtxs_),
-                           [](auto& x) { return Vtx(x, true); });
+                           [this](auto& x) {
+                               cache_.insert(x);
+                               return Vtx(x);
+                           });
         } else {
             std::transform(first, last, std::front_inserter(vtxs_),
-                           [](auto& x) { return Vtx(x, true); });
+                           [this](auto& x) {
+                               cache_.insert(x);
+                               return Vtx(x);
+                           });
         }
     }
 }
@@ -46,21 +53,38 @@ GenerationFront::Cycle GenerationFront::cycle()
     return ::CyclicIterator(std::begin(vtxs_), std::end(vtxs_));
 }
 
-GenerationFront& GenerationFront::insert(Iter pos, Mesh::VtxPtr ptr,
-                                         bool external)
+const GenerationFront::VtxCache& GenerationFront::cache()
 {
-    vtxs_.insert(pos, Vtx(ptr, external));
+    return cache_;
+}
+
+bool GenerationFront::is_vertex_in_front(const Vtx& vtx) const
+{
+    return cache_.find(vtx.global()) != std::end(cache_);
+}
+
+bool GenerationFront::is_vertex_in_front(Mesh::VtxPtr vptr) const
+{
+    return cache_.find(vptr) != std::end(cache_);
+}
+
+GenerationFront& GenerationFront::insert(Iter pos, Mesh::VtxPtr ptr)
+{
+    cache_.insert(ptr);
+    vtxs_.insert(pos, Vtx(ptr));
     return *this;
 }
 
 GenerationFront& GenerationFront::erase(Iter pos)
 {
+    cache_.erase(pos->global());
     vtxs_.erase(pos);
     return *this;
 }
 
 GenerationFront& GenerationFront::clear() noexcept
 {
+    cache_.clear();
     vtxs_.clear();
     return *this;
 }
@@ -374,9 +398,8 @@ Mesh::EdgePtr edge(const FrontCycler& c, const FrontIter& it)
     return {{it->global(), c.next(it)->global()}};
 }
 
-GenerationFront::Vtx::Vtx(Mesh::VtxPtr global, bool external)
+GenerationFront::Vtx::Vtx(Mesh::VtxPtr global)
     : global_(std::move(global))
-    , external_(external)
     , iangle_(0)
     , type_(VtxType::NIL)
 {
@@ -389,10 +412,6 @@ gm::Point GenerationFront::Vtx::value() const noexcept
     return global_->value();
 }
 
-bool GenerationFront::Vtx::external() const noexcept
-{
-    return external_;
-}
 double GenerationFront::Vtx::iangle() const noexcept
 {
     return iangle_;
@@ -516,7 +535,6 @@ GenerationFront::Vtx::serialize(rapidjson::Value& result,
 
     result.SetObject();
     result.AddMember("global", global_->serialize(glob, alloc), alloc);
-    result.AddMember("external", external_, alloc);
     result.AddMember("internal_angle", iangle_, alloc);
     result.AddMember("type", rapidjson::StringRef(s.c_str(), s.length()),
                      alloc);
