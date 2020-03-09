@@ -123,6 +123,7 @@ public:
 
     gm::Point value() const noexcept;
     double iangle() const noexcept;
+    double ideal_length() const noexcept;
     VtxType type() const noexcept;
     bool is_ambiguous() const noexcept;
     Mesh::VtxPtr global() const noexcept;
@@ -139,6 +140,9 @@ private:
 
     Mesh::VtxPtr global_;
     double iangle_;
+    // TODO: длина вектора при начальной проекции, нужно сохранять при
+    // генерации
+    double ideal_length_;
     VtxType type_;
 };
 

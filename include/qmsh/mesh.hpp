@@ -32,6 +32,7 @@ public:
 
     using VertexContainer = std::list<Vtx>;
     using VtxPtr = VertexContainer::pointer;
+    using ConstVtxPtr = VertexContainer::const_pointer;
 
     template <ptrdiff_t N>
     struct VarElement : std::array<VtxId, N> {
@@ -53,8 +54,8 @@ public:
         }
     };
 
-    template <ptrdiff_t N>
-    struct VarElemPtr : std::array<VtxPtr, N> {
+    template <typename T, ptrdiff_t N>
+    struct VarElemT : std::array<T, N> {
         rapidjson::Value&
         serialize(rapidjson::Value& result,
                   rapidjson::Value::AllocatorType& alloc) const
@@ -74,18 +75,29 @@ public:
     using ElementContainer = std::vector<Element>;
     using EdgeElementContainer = std::vector<EdgeElement>;
 
-    using ElemPtr = VarElemPtr<elem_vtx>;
-    using EdgePtr = VarElemPtr<edge_vtx>;
+    using ElemPtr = VarElemT<VtxPtr, elem_vtx>;
+    using ElemTripletPtr = VarElemT<VtxPtr, elem_vtx - 1>;
+    using EdgePtr = VarElemT<VtxPtr, edge_vtx>;
+    using ConstElemPtr = VarElemT<ConstVtxPtr, elem_vtx>;
+    using ConstElemTripletPtr = VarElemT<ConstVtxPtr, elem_vtx - 1>;
+    using ConstEdgePtr = VarElemT<ConstVtxPtr, edge_vtx>;
 
     Mesh();
 
     VtxPtr add_vertex(Vtx vtx);
-    VtxPtr add_vertex(gm::Point value, bool external=false);
+    VtxPtr add_vertex(gm::Point value, bool external = false);
     VtxPtr replace_vertex(VtxPtr from, VtxPtr to);
     void remove_obsolete_vertices();
 
     ElemPtr add_element(ElemPtr elem);
     EdgePtr add_edge(EdgePtr edge);
+
+    // TODO: оптимизировать структуру сетки для ускорения поиска элемента по
+    // узлу
+    ConstVtxPtr vertex_by_index(VtxId id) const;
+    std::vector<ConstElemPtr> elements_by_vertex(ConstVtxPtr vtx) const;
+    std::vector<ConstElemTripletPtr>
+    element_triplets_by_vertex(ConstVtxPtr vtx) const;
 
     const VertexContainer& vtx_view() const noexcept;
     const ElementContainer& elem_view() const noexcept;

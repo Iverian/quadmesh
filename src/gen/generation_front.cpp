@@ -422,6 +422,11 @@ VtxType GenerationFront::Vtx::type() const noexcept
     return type_;
 }
 
+double GenerationFront::Vtx::ideal_length() const noexcept
+{
+    return ideal_length_;
+}
+
 bool GenerationFront::Vtx::is_ambiguous() const noexcept
 {
     return (type_ == VtxType::END_SIDE || type_ == VtxType::SIDE_CORNER

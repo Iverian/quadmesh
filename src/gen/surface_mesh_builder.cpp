@@ -1,3 +1,4 @@
+#include <gm/point.hpp>
 #define _USE_MATH_DEFINES
 
 #include "minimizer.hpp"
@@ -169,10 +170,15 @@ void SurfaceMeshBuilder::smooth_boundary_nodes(
 
     for (auto& vptr : nodes_to_smooth) {
         smooth_boundary_node(vptr, front);
-        if (depth > 0) {
+    }
+    if (depth > 0) {
+        for (auto& vptr : nodes_to_smooth) {
             for (auto& adj : *vptr) {
                 smooth_internal_node(adj, front, depth, internal_node_cache);
             }
+        }
+        for (auto& vptr : nodes_to_smooth) {
+            smooth_boundary_node(vptr, front);
         }
     }
 }
@@ -182,6 +188,30 @@ void SurfaceMeshBuilder::smooth_boundary_node(
 {
     if (vptr->is_external() || front.is_vertex_in_front(vptr)) {
         return;
+    }
+
+    gm::Point p_iso;
+    auto triplets = mesh_.element_triplets_by_vertex(vptr);
+    for (auto& t : triplets) {
+        p_iso += t[0]->value() + t[1]->value() - t[2]->value();
+    }
+    p_iso /= double(triplets.size());
+    auto delta = p_iso - vptr->value();
+    if (triplets.size() == 2) {
+        gm::Point p_common;
+        for (auto& i : triplets[0]) {
+            for (auto& j : triplets[1]) {
+                if (i->id() == j->id()) {
+                    p_common = i->value();
+                    break;
+                }
+            }
+        }
+        // TODO: отрефакторить код, чтобы здесь видеть начальную длину проекции
+        auto ideal_length = 1;
+        delta = p_common - vptr->value()
+            + (delta + vptr->value() - p_common) * gm::dist(p_iso, p_common)
+                / ideal_length;
     }
 
     // TODO: smooth node

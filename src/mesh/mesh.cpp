@@ -1,3 +1,5 @@
+#include <cstddef>
+#include <iterator>
 #include <qmsh/mesh.hpp>
 
 #include <cmms/cyclic_iterator.hpp>
@@ -98,6 +100,58 @@ Mesh::ElemPtr Mesh::add_element(ElemPtr elem)
     return elem;
 }
 
+Mesh::ConstVtxPtr Mesh::vertex_by_index(VtxId id) const
+{
+    ConstVtxPtr result = nullptr;
+    for (auto& i : vertices_) {
+        if (i.id() == id) {
+            result = &i;
+            break;
+        }
+    }
+    return result;
+}
+
+std::vector<Mesh::ConstElemPtr> Mesh::elements_by_vertex(ConstVtxPtr vtx) const
+{
+    std::vector<ConstElemPtr> result;
+    result.reserve(2);
+    for (auto& i : elems_) {
+        if (std::any_of(std::begin(i), std::end(i),
+                        [&vtx](auto& x) { return x.id == vtx->id(); })) {
+        }
+        ElemPtr elem;
+        std::transform(std::begin(i), std::end(i), std::begin(elem),
+                       [this](auto& x) { return vertex_by_index(x); });
+        result.emplace_back(std::move(elem));
+    }
+    return result;
+}
+
+// TODO: узлы троек должны быть упорядочены по/против часовой стрелки
+std::vector<Mesh::ConstElemTripletPtr>
+Mesh::element_triplets_by_vertex(ConstVtxPtr vtx) const
+{
+    std::vector<ConstElemTripletPtr> result;
+    result.reserve(2);
+    for (auto& i : elems_) {
+        if (std::any_of(std::begin(i), std::end(i),
+                        [&vtx](auto& x) { return x.id == vtx->id(); })) {
+            ConstElemTripletPtr elem;
+            size_t pos = 0;
+            for (auto& j : i) {
+                if (j == vtx->id()) {
+                    continue;
+                }
+                elem[pos++] = vertex_by_index(j);
+            }
+
+            result.emplace_back(std::move(elem));
+        }
+    }
+    return result;
+}
+
 const Mesh::VertexContainer& Mesh::vtx_view() const noexcept
 {
     return vertices_;
@@ -115,9 +169,9 @@ const Mesh::EdgeElementContainer& Mesh::edge_view() const noexcept
 
 void Mesh::set_adjacent(VtxPtr lhs, VtxPtr rhs)
 {
-    check_if(
-        lhs->is_inserted() && rhs->is_inserted(),
-        "insert vertices into existing mesh before setting them as adjacent");
+    check_if(lhs->is_inserted() && rhs->is_inserted(),
+             "insert vertices into existing mesh before setting them as "
+             "adjacent");
 
     lhs->adjacent_.insert(rhs);
     rhs->adjacent_.insert(lhs);
