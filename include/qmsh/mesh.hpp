@@ -3,6 +3,7 @@
 
 #include "config.hpp"
 #include "exports.hpp"
+#include "holed_vector.hpp"
 #include "serialize.hpp"
 
 #include <gm/point.hpp>
@@ -13,140 +14,149 @@
 
 #include <algorithm>
 #include <array>
+#include <cstddef>
 #include <list>
 #include <ostream>
 #include <set>
-#include <type_traits>
+#include <unordered_map>
+#include <vector>
 
 namespace qmsh {
 
 static constexpr ptrdiff_t elem_vtx = 4;
 static constexpr ptrdiff_t edge_vtx = 2;
 
-class QMSH_EXPORT Mesh {
+class Vtx;
+class VtxPtr;
+class ConstVtxPtr;
+
+template <size_t N>
+class VarElement : public std::array<size_t, N> {
+    using Super = std::array<size_t, N>;
+
 public:
-    using VtxId = ptrdiff_t;
-    static constexpr VtxId npos = -1;
-
-    class Vtx;
-
-    using VertexContainer = std::list<Vtx>;
-    using VtxPtr = VertexContainer::pointer;
-    using ConstVtxPtr = VertexContainer::const_pointer;
-
-    template <ptrdiff_t N>
-    struct VarElement : std::array<VtxId, N> {
-        rapidjson::Value&
-        serialize(rapidjson::Value& result,
-                  rapidjson::Value::AllocatorType& alloc) const
-        {
-            result.SetArray();
-            for (auto& i : *this) {
-                result.PushBack(i, alloc);
-            }
-            return result;
-        }
-
-        bool is_inserted() const noexcept
-        {
-            return std::all_of(std::begin(*this), std::end(*this),
-                               [](auto& i) { return i->is_inserted(); });
-        }
-    };
-
-    template <typename T, ptrdiff_t N>
-    struct VarElemT : std::array<T, N> {
-        rapidjson::Value&
-        serialize(rapidjson::Value& result,
-                  rapidjson::Value::AllocatorType& alloc) const
-        {
-            result.SetArray();
-            for (auto& i : *this) {
-                rapidjson::Value v;
-                result.PushBack(i->serialize(v, alloc), alloc);
-            }
-            return result;
-        }
-    };
-
-    using Element = VarElement<elem_vtx>;
-    using EdgeElement = VarElement<edge_vtx>;
-
-    using ElementContainer = std::vector<Element>;
-    using EdgeElementContainer = std::vector<EdgeElement>;
-
-    using ElemPtr = VarElemT<VtxPtr, elem_vtx>;
-    using ElemTripletPtr = VarElemT<VtxPtr, elem_vtx - 1>;
-    using EdgePtr = VarElemT<VtxPtr, edge_vtx>;
-    using ConstElemPtr = VarElemT<ConstVtxPtr, elem_vtx>;
-    using ConstElemTripletPtr = VarElemT<ConstVtxPtr, elem_vtx - 1>;
-    using ConstEdgePtr = VarElemT<ConstVtxPtr, edge_vtx>;
-
-    Mesh();
-
-    VtxPtr add_vertex(Vtx vtx);
-    VtxPtr add_vertex(gm::Point value, bool external = false);
-    VtxPtr replace_vertex(VtxPtr from, VtxPtr to);
-    void remove_obsolete_vertices();
-
-    ElemPtr add_element(ElemPtr elem);
-    EdgePtr add_edge(EdgePtr edge);
-
-    // TODO: оптимизировать структуру сетки для ускорения поиска элемента по
-    // узлу
-    ConstVtxPtr vertex_by_index(VtxId id) const;
-    std::vector<ConstElemPtr> elements_by_vertex(ConstVtxPtr vtx) const;
-    std::vector<ConstElemTripletPtr>
-    element_triplets_by_vertex(ConstVtxPtr vtx) const;
-
-    const VertexContainer& vtx_view() const noexcept;
-    const ElementContainer& elem_view() const noexcept;
-    const EdgeElementContainer& edge_view() const noexcept;
-
-    static void set_adjacent(VtxPtr lhs, VtxPtr rhs);
-    static std::array<EdgePtr, elem_vtx> edges(ElemPtr ptr);
+    using Super::Super;
 
     rapidjson::Value& serialize(rapidjson::Value& result,
-                                rapidjson::Value::AllocatorType& alloc) const;
-
-private:
-    VertexContainer vertices_;
-    ElementContainer elems_;
-    EdgeElementContainer edges_;
+                                rapidjson::Value::AllocatorType& alloc) const
+    {
+        result.SetArray();
+        for (auto& i : *this) {
+            result.PushBack(i, alloc);
+        }
+        return result;
+    }
 };
 
-class QMSH_EXPORT Mesh::Vtx {
-    friend class Mesh;
+template <class T, size_t N>
+class VarElementPtr : public std::array<T, N> {
+    using Super = std::array<T, N>;
 
 public:
-    using AdjacentContainer = std::set<Mesh::VtxPtr>;
+    using Super::Super;
 
-    explicit Vtx(gm::Point vertex = {}) noexcept;
+    rapidjson::Value& serialize(rapidjson::Value& result,
+                                rapidjson::Value::AllocatorType& alloc) const
+    {
+        result.SetArray();
+        for (auto& i : *this) {
+            rapidjson::Value v;
+            result.PushBack(i->serialize(v, alloc), alloc);
+        }
+        return result;
+    }
+};
 
-    bool is_inserted() const noexcept;
-    bool is_external() const noexcept;
-    VtxId id() const noexcept;
+using Element = VarElement<elem_vtx>;
+using ElementPtr = VarElementPtr<VtxPtr, elem_vtx>;
+using ConstElementPtr = VarElementPtr<ConstVtxPtr, elem_vtx>;
 
-    const gm::Point& value() const noexcept;
-    Vtx& set_value(gm::Point new_value) noexcept;
-    AdjacentContainer::size_type adj_count() const noexcept;
+class QMSH_EXPORT Mesh {
+public:
+    using Vertices = HoledVector<Vtx>;
+    using LookupMap = std::unordered_multimap<size_t, size_t>;
+    using LookupRange
+        = std::pair<LookupMap::const_iterator, LookupMap::const_iterator>;
 
-    AdjacentContainer::const_iterator begin() const;
-    AdjacentContainer::const_iterator end() const;
-    AdjacentContainer::const_iterator cbegin() const;
-    AdjacentContainer::const_iterator cend() const;
+    VtxPtr operator[](size_t id);
+    ConstVtxPtr operator[](size_t id) const;
+
+    Element& element(size_t id) noexcept;
+    const Element& element(size_t id) const noexcept;
+    ElementPtr element_ptr(size_t id) const noexcept;
+
+    Vertices& vertices();
+    const Vertices& vertices() const;
+
+    LookupRange element_lookup(size_t id) const;
+
+    bool vertex_inserted(VtxPtr ptr) const noexcept;
+    VtxPtr insert_vertex(Vtx vertex);
+    VtxPtr insert_vertex(gm::Point value, bool external = false);
+    VtxPtr replace_vertex(VtxPtr from, VtxPtr to);
+
+    void set_adjacent(size_t lhs, size_t rhs);
+
+    ElementPtr insert_element(ElementPtr elem);
 
     rapidjson::Value& serialize(rapidjson::Value& result,
                                 rapidjson::Value::AllocatorType& alloc) const;
 
 private:
-    Vtx(VtxId id, bool external, gm::Point vertex) noexcept;
-    void set_id(VtxId new_id);
+    Vertices vertices_;
+    std::vector<Element> elements_;
+    LookupMap element_lookup_;
+};
 
-    VtxId id_;
+class QMSH_EXPORT Vtx {
+public:
+    using Adjacent = std::vector<size_t>;
+
+    explicit Vtx(gm::Point value, bool external = false) noexcept;
+
+    bool external() const noexcept;
+    const gm::Point& value() const noexcept;
+    const Adjacent& adjacent() const;
+
+    Vtx& set_value(gm::Point new_value) noexcept;
+    void set_adjacent(size_t id);
+    void erase_adjacent(size_t id = Mesh::Vertices::npos);
+
+    rapidjson::Value& serialize(rapidjson::Value& result,
+                                rapidjson::Value::AllocatorType& alloc) const;
+
+private:
+    gm::Point value_;
     bool external_;
-    gm::Point vertex_;
-    AdjacentContainer adjacent_;
+    Adjacent adjacent_;
+};
+
+class QMSH_EXPORT VtxPtr {
+public:
+    VtxPtr() noexcept;
+    VtxPtr(Mesh::Vertices* parent, size_t id) noexcept;
+    Mesh::Vertices::reference operator*() const noexcept;
+    Mesh::Vertices::pointer operator->() const noexcept;
+    Mesh::Vertices* parent() const noexcept;
+    size_t id() const noexcept;
+
+private:
+    Mesh::Vertices* parent_;
+    size_t value_;
+};
+
+class QMSH_EXPORT ConstVtxPtr {
+public:
+    ConstVtxPtr() noexcept;
+    ConstVtxPtr(const Mesh::Vertices* parent, size_t id) noexcept;
+    Mesh::Vertices::const_reference operator*() const noexcept;
+    Mesh::Vertices::const_pointer operator->() const noexcept;
+    const Mesh::Vertices* parent() const noexcept;
+    size_t id() const noexcept;
+
+private:
+    const Mesh::Vertices* parent_;
+    size_t value_;
 };
 
 } // namespace qmsh

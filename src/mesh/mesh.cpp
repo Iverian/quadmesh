@@ -1,5 +1,3 @@
-#include <cstddef>
-#include <iterator>
 #include <qmsh/mesh.hpp>
 
 #include <cmms/cyclic_iterator.hpp>
@@ -16,173 +14,115 @@
 
 namespace qmsh {
 
-Mesh::Mesh()
-    : vertices_()
-    , elems_()
+VtxPtr Mesh::operator[](size_t id)
 {
+    return VtxPtr(&vertices_, id);
 }
 
-Mesh::VtxPtr Mesh::add_vertex(Vtx vtx)
+ConstVtxPtr Mesh::operator[](size_t id) const
 {
-    vtx.set_id(vertices_.size());
-    vertices_.emplace_back(std::move(vtx));
-    return &vertices_.back();
+    return ConstVtxPtr(&vertices_, id);
 }
 
-Mesh::VtxPtr Mesh::add_vertex(gm::Point vtx, bool external)
+Element& Mesh::element(size_t id) noexcept
 {
-    vertices_.push_back(Vtx(vertices_.size(), external, vtx));
-    return &vertices_.back();
+    return elements_[id];
 }
 
-Mesh::VtxPtr Mesh::replace_vertex(Mesh::VtxPtr from, Mesh::VtxPtr to)
+const Element& Mesh::element(size_t id) const noexcept
 {
-    for (auto& i : from->adjacent_) {
-        set_adjacent(to, i);
-        i->adjacent_.erase(from);
-    }
-    from->adjacent_.clear();
-    for (auto& elem : elems_) {
-        for (auto& vtx : elem) {
-            if (vtx == from->id_) {
-                vtx = to->id_;
-            }
-        }
-    }
-    for (auto& edge : edges_) {
-        for (auto& vtx : edge) {
-            if (vtx == from->id_) {
-                vtx = to->id_;
-            }
-        }
-    }
-    return to;
+    return elements_[id];
 }
 
-void Mesh::remove_obsolete_vertices()
+ElementPtr Mesh::element_ptr(size_t id) const noexcept
 {
-    for (auto i = std::begin(vertices_); i != std::end(vertices_);) {
-        if (!i->adj_count()) {
-            i = vertices_.erase(i);
-        } else {
-            ++i;
-        }
-    }
-}
+    auto& elem = elements_[id];
 
-Mesh::EdgePtr Mesh::add_edge(EdgePtr edge)
-{
-    for (auto& i : edge) {
-        if (!i->is_inserted()) {
-            i = add_vertex(std::move(*i));
-        }
-    }
-    set_adjacent(edge[0], edge[1]);
-    edges_.push_back({{edge[0]->id(), edge[1]->id()}});
-
-    return edge;
-}
-
-Mesh::ElemPtr Mesh::add_element(ElemPtr elem)
-{
-    for (auto& i : elem) {
-        if (!i->is_inserted()) {
-            i = add_vertex(std::move(*i));
-        }
-    }
-    add_edge({elem[0], elem[1]});
-    add_edge({elem[1], elem[2]});
-    add_edge({elem[2], elem[3]});
-    add_edge({elem[3], elem[0]});
-    elems_.push_back(
-        {{elem[0]->id(), elem[1]->id(), elem[2]->id(), elem[3]->id()}});
-
-    return elem;
-}
-
-Mesh::ConstVtxPtr Mesh::vertex_by_index(VtxId id) const
-{
-    ConstVtxPtr result = nullptr;
-    for (auto& i : vertices_) {
-        if (i.id() == id) {
-            result = &i;
-            break;
-        }
-    }
+    ElementPtr result;
+    std::transform(std::begin(elem), std::end(elem), std::begin(result),
+                   [this](auto& x) { return VtxPtr(&vertices_, x); });
     return result;
 }
 
-std::vector<Mesh::ConstElemPtr> Mesh::elements_by_vertex(ConstVtxPtr vtx) const
-{
-    std::vector<ConstElemPtr> result;
-    result.reserve(2);
-    for (auto& i : elems_) {
-        if (std::any_of(std::begin(i), std::end(i),
-                        [&vtx](auto& x) { return x.id == vtx->id(); })) {
-        }
-        ElemPtr elem;
-        std::transform(std::begin(i), std::end(i), std::begin(elem),
-                       [this](auto& x) { return vertex_by_index(x); });
-        result.emplace_back(std::move(elem));
-    }
-    return result;
-}
-
-// TODO: узлы троек должны быть упорядочены по/против часовой стрелки
-std::vector<Mesh::ConstElemTripletPtr>
-Mesh::element_triplets_by_vertex(ConstVtxPtr vtx) const
-{
-    std::vector<ConstElemTripletPtr> result;
-    result.reserve(2);
-    for (auto& i : elems_) {
-        if (std::any_of(std::begin(i), std::end(i),
-                        [&vtx](auto& x) { return x.id == vtx->id(); })) {
-            ConstElemTripletPtr elem;
-            size_t pos = 0;
-            for (auto& j : i) {
-                if (j == vtx->id()) {
-                    continue;
-                }
-                elem[pos++] = vertex_by_index(j);
-            }
-
-            result.emplace_back(std::move(elem));
-        }
-    }
-    return result;
-}
-
-const Mesh::VertexContainer& Mesh::vtx_view() const noexcept
+Mesh::Vertices& Mesh::vertices()
 {
     return vertices_;
 }
 
-const Mesh::ElementContainer& Mesh::elem_view() const noexcept
+const Mesh::Vertices& Mesh::vertices() const
 {
-    return elems_;
+    return vertices_;
 }
 
-const Mesh::EdgeElementContainer& Mesh::edge_view() const noexcept
+Mesh::LookupRange Mesh::element_lookup(size_t id) const
 {
-    return edges_;
+    return element_lookup_.equal_range(id);
 }
 
-void Mesh::set_adjacent(VtxPtr lhs, VtxPtr rhs)
+bool Mesh::vertex_inserted(VtxPtr ptr) const noexcept
 {
-    check_if(lhs->is_inserted() && rhs->is_inserted(),
-             "insert vertices into existing mesh before setting them as "
-             "adjacent");
-
-    lhs->adjacent_.insert(rhs);
-    rhs->adjacent_.insert(lhs);
+    return ptr.parent() == &vertices_;
 }
 
-std::array<Mesh::EdgePtr, elem_vtx> Mesh::edges(ElemPtr ptr)
+VtxPtr Mesh::insert_vertex(Vtx vertex)
 {
-    return {{{(ptr)[0], (ptr)[1]},
-             {(ptr)[1], (ptr)[2]},
-             {(ptr)[2], (ptr)[3]},
-             {(ptr)[3], (ptr)[0]}}};
+    return VtxPtr(&vertices_, vertices_.insert(std::move(vertex)));
+}
+
+VtxPtr Mesh::insert_vertex(gm::Point value, bool external)
+{
+    return VtxPtr(&vertices_, vertices_.insert(Vtx(value, external)));
+}
+
+VtxPtr Mesh::replace_vertex(VtxPtr from, VtxPtr to)
+{
+    for (auto& i : from->adjacent()) {
+        set_adjacent(to.id(), i);
+        vertices_[i].erase_adjacent(from.id());
+    }
+    vertices_.erase(from.id());
+
+    auto elements = element_lookup(from.id());
+    for (auto elem = elements.first; elem != elements.second; ++elem) {
+        for (auto& i : elements_[elem->second]) {
+            if (i == from.id()) {
+                i = to.id();
+            }
+        }
+    }
+    element_lookup_.erase(from.id());
+
+    return to;
+}
+
+void Mesh::set_adjacent(size_t lhs, size_t rhs)
+{
+    vertices_.at(lhs).set_adjacent(rhs);
+    vertices_.at(rhs).set_adjacent(lhs);
+}
+
+ElementPtr Mesh::insert_element(ElementPtr elem)
+{
+    for (auto& i : elem) {
+        if (i.parent() != &vertices_) {
+            i = insert_vertex(*i);
+        }
+    }
+    for (size_t i = 0; i < elem_vtx; ++i) {
+        set_adjacent(elem[i].id(), elem[(i + 1) % elem_vtx].id());
+    }
+
+    Element new_elem;
+    std::transform(std::begin(elem), std::end(elem), std::begin(new_elem),
+                   [](auto& x) { return x.id(); });
+
+    auto elem_id = elements_.size();
+    elements_.emplace_back(std::move(new_elem));
+    for (auto& i : new_elem) {
+        element_lookup_.emplace(i, new_elem);
+    }
+
+    return elem;
 }
 
 rapidjson::Value& Mesh::serialize(rapidjson::Value& result,
@@ -192,103 +132,81 @@ rapidjson::Value& Mesh::serialize(rapidjson::Value& result,
 
     rapidjson::Value vtxs(rapidjson::kArrayType);
     rapidjson::Value elems(rapidjson::kArrayType);
-    rapidjson::Value edges(rapidjson::kArrayType);
 
     for (auto& i : vertices_) {
-        rapidjson::Value v;
-        vtxs.PushBack(i.serialize(v, alloc), alloc);
+        rapidjson::Value base, value;
+        base.SetObject();
+        base.AddMember("id", i.first, alloc);
+        base.AddMember("value", i.second.serialize(value, alloc), alloc);
+        vtxs.PushBack(base, alloc);
     }
-    for (auto& i : elems_) {
+    for (auto& i : elements_) {
         rapidjson::Value v;
         elems.PushBack(i.serialize(v, alloc), alloc);
     }
-    for (auto& i : edges_) {
-        rapidjson::Value v;
-        edges.PushBack(i.serialize(v, alloc), alloc);
-    }
+
     result.AddMember("vertices", vtxs, alloc);
     result.AddMember("elements", elems, alloc);
-    result.AddMember("edges", edges, alloc);
 
     return result;
 }
 
-Mesh::Vtx::Vtx(gm::Point vertex) noexcept
-    : id_(Mesh::npos)
-    , external_(false)
-    , vertex_(vertex)
-{
-}
-
-Mesh::Vtx::Vtx(VtxId id, bool external, gm::Point vertex) noexcept
-    : id_(id)
+Vtx::Vtx(gm::Point value, bool external) noexcept
+    : value_(value)
     , external_(external)
-    , vertex_(vertex)
 {
 }
 
-void Mesh::Vtx::set_id(VtxId new_id)
-{
-    check_ifd(id_ == Mesh::npos && new_id != Mesh::npos,
-              "unable to change valid id or set id to invalid");
-
-    id_ = new_id;
-}
-
-bool Mesh::Vtx::is_inserted() const noexcept
-{
-    return id_ != Mesh::npos;
-}
-
-bool Mesh::Vtx::is_external() const noexcept
+bool Vtx::external() const noexcept
 {
     return external_;
 }
 
-Mesh::VtxId Mesh::Vtx::id() const noexcept
+const gm::Point& Vtx::value() const noexcept
 {
-    return id_;
+    return value_;
 }
 
-const gm::Point& Mesh::Vtx::value() const noexcept
+const Vtx::Adjacent& Vtx::adjacent() const
 {
-    return vertex_;
+    return adjacent_;
 }
 
-Mesh::Vtx& Mesh::Vtx::set_value(gm::Point new_value) noexcept
+Vtx& Vtx::set_value(gm::Point new_value) noexcept
 {
-    vertex_ = new_value;
+    value_ = new_value;
     return *this;
 }
 
-size_t Mesh::Vtx::adj_count() const noexcept
+void Vtx::set_adjacent(size_t id)
 {
-    return adjacent_.size();
+    for (auto& i : adjacent_) {
+        if (i == id) {
+            return;
+        } else if (i == Mesh::Vertices::npos) {
+            i = id;
+            return;
+        }
+    }
+    adjacent_.push_back(id);
 }
 
-Mesh::Vtx::AdjacentContainer::const_iterator Mesh::Vtx::begin() const
+void Vtx::erase_adjacent(size_t id)
 {
-    return std::begin(adjacent_);
+    if (id == Mesh::Vertices::npos) {
+        adjacent_.clear();
+    } else {
+        for (auto& i : adjacent_) {
+            if (i == id) {
+                i = Mesh::Vertices::npos;
+                break;
+            }
+        }
+    }
 }
 
-Mesh::Vtx::AdjacentContainer::const_iterator Mesh::Vtx::end() const
-{
-    return std::end(adjacent_);
-}
-
-Mesh::Vtx::AdjacentContainer::const_iterator Mesh::Vtx::cbegin() const
-{
-    return std::cbegin(adjacent_);
-}
-
-Mesh::Vtx::AdjacentContainer::const_iterator Mesh::Vtx::cend() const
-{
-    return std::cend(adjacent_);
-}
-
-rapidjson::Value&
-Mesh::Vtx::serialize(rapidjson::Value& result,
-                     rapidjson::Value::AllocatorType& alloc) const
+rapidjson::Value& Vtx::serialize(rapidjson::Value& result,
+                                 rapidjson::Value::AllocatorType& alloc) const
 {
     result.SetObject();
 
@@ -296,17 +214,85 @@ Mesh::Vtx::serialize(rapidjson::Value& result,
     rapidjson::Value value(rapidjson::kArrayType);
 
     for (auto& i : adjacent_) {
-        adjacent.PushBack(i->id(), alloc);
+        if (i == Mesh::Vertices::npos) {
+            continue;
+        }
+        adjacent.PushBack(i, alloc);
     }
-    for (auto& i : vertex_) {
+
+    for (auto& i : value_) {
         value.PushBack(i, alloc);
     }
-    result.AddMember("id", id_, alloc);
+
     result.AddMember("external", external_, alloc);
     result.AddMember("adjacent", adjacent, alloc);
     result.AddMember("value", value, alloc);
 
     return result;
+}
+
+VtxPtr::VtxPtr() noexcept
+    : parent_(nullptr)
+    , value_(Mesh::Vertices::npos)
+{
+}
+
+VtxPtr::VtxPtr(Mesh::Vertices* parent, size_t id) noexcept
+    : parent_(parent)
+    , value_(id)
+{
+}
+
+Mesh::Vertices::reference VtxPtr::operator*() const noexcept
+{
+    return (*parent_)[value_];
+}
+
+Mesh::Vertices::pointer VtxPtr::operator->() const noexcept
+{
+    return &(*parent_)[value_];
+}
+
+Mesh::Vertices* VtxPtr::parent() const noexcept
+{
+    return parent_;
+}
+
+size_t VtxPtr::id() const noexcept
+{
+    return value_;
+}
+
+ConstVtxPtr::ConstVtxPtr() noexcept
+    : parent_(nullptr)
+    , value_(Mesh::Vertices::npos)
+{
+}
+
+ConstVtxPtr::ConstVtxPtr(const Mesh::Vertices* parent, size_t id) noexcept
+    : parent_(parent)
+    , value_(id)
+{
+}
+
+Mesh::Vertices::const_reference ConstVtxPtr::operator*() const noexcept
+{
+    return (*parent_)[value_];
+}
+
+Mesh::Vertices::const_pointer ConstVtxPtr::operator->() const noexcept
+{
+    return &(*parent_)[value_];
+}
+
+const Mesh::Vertices* ConstVtxPtr::parent() const noexcept
+{
+    return parent_;
+}
+
+size_t ConstVtxPtr::id() const noexcept
+{
+    return value_;
 }
 
 } // namespace qmsh
