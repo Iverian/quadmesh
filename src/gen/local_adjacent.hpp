@@ -8,13 +8,13 @@
 #include <vector>
 
 namespace qmsh {
-
 class LocalAdjacent {
 public:
-    using Data = std::map<Mesh::VtxPtr, std::vector<Mesh::VtxId>>;
+    using Data = std::unordered_map<VtxPtr, std::vector<size_t>>;
 
-    void set_adjacent(Mesh::VtxPtr lhs, Mesh::VtxPtr rhs);
-    size_t adjcount(Mesh::VtxPtr obj) const;
+    void set_adjacent(VtxPtr lhs, VtxPtr rhs);
+    void remove_adjacent(VtxPtr vtx, size_t id);
+    size_t adjcount(VtxPtr obj) const;
 
     template <class BidirIt>
     void set_adjacent(BidirIt first, BidirIt last)
@@ -32,7 +32,7 @@ public:
     }
 
 private:
-    void set_adjacent(std::vector<Mesh::VtxId>& v, Mesh::VtxId obj);
+    void set_adjacent(std::vector<size_t>& v, size_t obj);
 
     Data d_;
 };

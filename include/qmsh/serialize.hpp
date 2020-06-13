@@ -20,9 +20,9 @@ namespace detail {
     inline constexpr bool sfinae_true_v = sfinae_true<T>::value;
 
     template <class T>
-    static auto test_serializable(int) -> sfinae_true<decltype(&T::serialize)>;
+    static sfinae_true<decltype(&T::serialize)> test_serializable(int);
     template <class>
-    static auto test_serializable(long) -> std::false_type;
+    static std::false_type test_serializable(long);
 } // namespace detail
 
 template <class T>

@@ -54,7 +54,7 @@ public:
     using Iter = VtxContainer::iterator;
     using Cycle = CyclicIterator<Iter>;
     using Row = std::pair<Iter, Iter>;
-    using VtxCache = std::unordered_set<Mesh::VtxPtr>;
+    using VtxCache = std::unordered_set<VtxPtr>;
 
     using iterator = VtxContainer::iterator;
     using const_iterator = VtxContainer::const_iterator;
@@ -64,17 +64,21 @@ public:
     using const_reference = VtxContainer::const_reference;
 
     GenerationFront(FrontType type, LocalAdjacent& adj, bool same_sense = true,
-                    const std::vector<Mesh::VtxPtr>& vtxs = {});
+                    const std::vector<VtxPtr>& vtxs = {});
 
     FrontType type() const noexcept;
-    Cycle cycle();
+    Cycle cycle() noexcept;
 
-    const VtxCache& cache();
+    VtxCache& cache() noexcept;
+    const VtxCache& cache() const noexcept;
     bool is_vertex_in_front(const Vtx& vtx) const;
-    bool is_vertex_in_front(Mesh::VtxPtr vptr) const;
+    bool is_vertex_in_front(VtxPtr vptr) const;
 
-    GenerationFront& insert(Iter pos, Mesh::VtxPtr ptr);
-    GenerationFront& erase(Iter pos);
+    GenerationFront& insert(Iter pos, VtxPtr ptr);
+    Iter replace(Iter pos, VtxPtr ptr);
+    Iter erase(Iter pos);
+    Iter erase(Iter first, Iter last);
+
     GenerationFront& clear() noexcept;
 
     bool empty() const noexcept;
@@ -105,8 +109,8 @@ public:
 
 private:
     FrontType type_;
-    VtxCache cache_;
     VtxContainer vtxs_;
+    VtxCache cache_;
 };
 
 using FrontIter = GenerationFront::VtxContainer::iterator;
@@ -114,19 +118,16 @@ using FrontCycle = GenerationFront::Cycle;
 using FrontCycler = cmms::Cycler<FrontIter>;
 using FrontRow = GenerationFront::Row;
 
-Mesh::EdgePtr edge(const FrontCycle& it);
-Mesh::EdgePtr edge(const FrontCycler& c, const FrontIter& it);
-
 class GenerationFront::Vtx {
-public:
-    explicit Vtx(Mesh::VtxPtr global);
+    friend class GenerationFront;
 
+public:
     gm::Point value() const noexcept;
     double iangle() const noexcept;
-    double ideal_length() const noexcept;
     VtxType type() const noexcept;
     bool is_ambiguous() const noexcept;
-    Mesh::VtxPtr global() const noexcept;
+    VtxPtr& global() noexcept;
+    const VtxPtr& global() const noexcept;
 
     Vtx& set_iangle(double new_angle, const Config::AngTol& at) noexcept;
     Vtx& resolve(size_t local_adjcount, VtxType new_type = VtxType::NIL,
@@ -136,13 +137,11 @@ public:
                                 rapidjson::Value::AllocatorType& alloc) const;
 
 private:
+    explicit Vtx(const VtxPtr& global);
     void base_type(const Config::AngTol& at) noexcept;
 
-    Mesh::VtxPtr global_;
+    VtxPtr global_;
     double iangle_;
-    // TODO: длина вектора при начальной проекции, нужно сохранять при
-    // генерации
-    double ideal_length_;
     VtxType type_;
 };
 

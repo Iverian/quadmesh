@@ -17,9 +17,8 @@ namespace qmsh {
 
 GenerationFront::GenerationFront(FrontType type, LocalAdjacent& adj,
                                  bool same_sense,
-                                 const std::vector<Mesh::VtxPtr>& vtxs)
+                                 const std::vector<VtxPtr>& vtxs)
     : type_(type)
-    , cache_()
     , vtxs_()
 {
     if (!vtxs.empty()) {
@@ -29,16 +28,10 @@ GenerationFront::GenerationFront(FrontType type, LocalAdjacent& adj,
         adj.set_adjacent(first, last);
         if (same_sense) {
             std::transform(first, last, std::back_inserter(vtxs_),
-                           [this](auto& x) {
-                               cache_.insert(x);
-                               return Vtx(x);
-                           });
+                           [](auto& x) { return Vtx(x); });
         } else {
             std::transform(first, last, std::front_inserter(vtxs_),
-                           [this](auto& x) {
-                               cache_.insert(x);
-                               return Vtx(x);
-                           });
+                           [](auto& x) { return Vtx(x); });
         }
     }
 }
@@ -48,38 +41,53 @@ FrontType GenerationFront::type() const noexcept
     return type_;
 }
 
-GenerationFront::Cycle GenerationFront::cycle()
+GenerationFront::Cycle GenerationFront::cycle() noexcept
 {
     return ::CyclicIterator(std::begin(vtxs_), std::end(vtxs_));
 }
 
-const GenerationFront::VtxCache& GenerationFront::cache()
+GenerationFront::VtxCache& GenerationFront::cache() noexcept
 {
     return cache_;
 }
 
-bool GenerationFront::is_vertex_in_front(const Vtx& vtx) const
+const GenerationFront::VtxCache& GenerationFront::cache() const noexcept
 {
-    return cache_.find(vtx.global()) != std::end(cache_);
+    return cache_;
 }
 
-bool GenerationFront::is_vertex_in_front(Mesh::VtxPtr vptr) const
+bool GenerationFront::is_vertex_in_front(VtxPtr vptr) const
 {
     return cache_.find(vptr) != std::end(cache_);
 }
 
-GenerationFront& GenerationFront::insert(Iter pos, Mesh::VtxPtr ptr)
+GenerationFront& GenerationFront::insert(Iter pos, VtxPtr ptr)
 {
     cache_.insert(ptr);
     vtxs_.insert(pos, Vtx(ptr));
     return *this;
 }
 
-GenerationFront& GenerationFront::erase(Iter pos)
+GenerationFront::Iter GenerationFront::replace(Iter pos, VtxPtr ptr)
 {
     cache_.erase(pos->global());
-    vtxs_.erase(pos);
-    return *this;
+    cache_.insert(ptr);
+    *pos = Vtx(ptr);
+    return pos;
+}
+
+GenerationFront::Iter GenerationFront::erase(Iter pos)
+{
+    cache_.erase(pos->global());
+    return vtxs_.erase(pos);
+}
+
+GenerationFront::Iter GenerationFront::erase(Iter first, Iter last)
+{
+    for (auto i = first; i != last; ++i) {
+        cache_.erase(i->global());
+    }
+    return vtxs_.erase(first, last);
 }
 
 GenerationFront& GenerationFront::clear() noexcept
@@ -136,7 +144,7 @@ void GenerationFront::resolve_row(const LocalAdjacent& adj)
     if (type_ != FrontType::OUTER
         || (p = classify_primitive(false, adj)) == PrimitiveType::NIL) {
         for (auto& i : vtxs_) {
-            auto c = adj.adjcount(i.global());
+            auto c = adj.adjcount(i.global()) + int(i.global()->code());
             i.resolve(c);
         }
     }
@@ -257,7 +265,7 @@ GenerationFront::classify_primitive(bool force, const LocalAdjacent& adj,
                         std::numeric_limits<double>::max()};
 
         auto& prod = opt.value();
-        auto& best_primitive = prod.front();
+        auto best_primitive = &prod.front();
 
         for (auto& i : prod) {
             std::vector<ptrdiff_t> m;
@@ -269,6 +277,7 @@ GenerationFront::classify_primitive(bool force, const LocalAdjacent& adj,
             auto curq = primitive_quality(i, adj);
             if (curq < minq) {
                 result = t;
+                best_primitive = &i;
                 minq = curq;
 
                 if (intervals != nullptr) {
@@ -280,8 +289,8 @@ GenerationFront::classify_primitive(bool force, const LocalAdjacent& adj,
             }
         }
         if (result != PrimitiveType::NIL) {
-            auto p = std::begin(best_primitive);
-            auto pend = std::end(best_primitive);
+            auto p = std::begin(*best_primitive);
+            auto pend = std::end(*best_primitive);
             auto v = std::begin(vtxs_);
             auto vend = std::end(vtxs_);
 
@@ -321,6 +330,12 @@ GenerationFront::primitive_viability(const std::vector<VtxType>& primitive,
             intervals->clear();
             intervals->resize(m.size());
             std::copy(std::begin(m), std::end(m), std::begin(*intervals));
+        }
+        if (s != 0) {
+            auto mmax = *std::max_element(std::begin(m), std::end(m));
+            while (m[0] != mmax) {
+                cmms::cycle_forward(m);
+            }
         }
 
         switch (s) {
@@ -365,7 +380,6 @@ GenerationFront::primitive_viability(const std::vector<VtxType>& primitive,
         }
     }
 
-end:
     return result;
 }
 
@@ -381,6 +395,7 @@ GenerationFront::primitive_quality(const std::vector<VtxType>& primitive,
 
     for (; p != pend && v != vend; ++p, ++v) {
         irregular_count += std::abs(ptrdiff_t(adj.adjcount(v->global())
+                                              + int(v->global()->code())
                                               + insert_number(*p) - elem_vtx));
         angle_deviation += std::abs(v->iangle() - perfect_iangle(*p));
     }
@@ -388,23 +403,11 @@ GenerationFront::primitive_quality(const std::vector<VtxType>& primitive,
     return std::make_pair(irregular_count, angle_deviation / s);
 }
 
-Mesh::EdgePtr edge(const FrontCycle& it)
-{
-    return {{it->global(), std::next(it)->global()}};
-}
-
-Mesh::EdgePtr edge(const FrontCycler& c, const FrontIter& it)
-{
-    return {{it->global(), c.next(it)->global()}};
-}
-
-GenerationFront::Vtx::Vtx(Mesh::VtxPtr global)
-    : global_(std::move(global))
+GenerationFront::Vtx::Vtx(const VtxPtr& global)
+    : global_(global)
     , iangle_(0)
     , type_(VtxType::NIL)
 {
-    check_if(global_->is_inserted(),
-             "trying to insert temporary vertex into generation front");
 }
 
 gm::Point GenerationFront::Vtx::value() const noexcept
@@ -422,18 +425,18 @@ VtxType GenerationFront::Vtx::type() const noexcept
     return type_;
 }
 
-double GenerationFront::Vtx::ideal_length() const noexcept
-{
-    return ideal_length_;
-}
-
 bool GenerationFront::Vtx::is_ambiguous() const noexcept
 {
     return (type_ == VtxType::END_SIDE || type_ == VtxType::SIDE_CORNER
             || type_ == VtxType::CORNER_REVERSAL);
 }
 
-Mesh::VtxPtr GenerationFront::Vtx::global() const noexcept
+VtxPtr& GenerationFront::Vtx::global() noexcept
+{
+    return global_;
+}
+
+const VtxPtr& GenerationFront::Vtx::global() const noexcept
 {
     return global_;
 }

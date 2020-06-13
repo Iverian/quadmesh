@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+
+SCRIPT_DIR=$(realpath $(dirname $0))
+echo $SCRIPT_DIR
+
+carcas() {
+    python "$SCRIPT_DIR/carcas.py" "$@" &
+}

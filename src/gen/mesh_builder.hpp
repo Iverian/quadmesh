@@ -25,15 +25,15 @@ public:
 private:
     void mesh_face(const gm::Face& obj);
 
-    Mesh::VtxPtr mesh_vertex(gm::Point value);
-    const std::vector<Mesh::VtxPtr>& mesh_edge(const gm::Edge* obj);
+    VtxPtr mesh_vertex(gm::Point value);
+    const std::vector<VtxPtr>& mesh_edge(const gm::Edge& obj);
 
     const gm::Shell& shell_;
     const qmsh::Config& conf_;
 
     CurveDiscretize cdisc_;
-    std::unordered_map<gm::Point, Mesh::VtxPtr> vtxs_;
-    std::unordered_map<const gm::Edge*, std::vector<Mesh::VtxPtr>> edges_;
+    std::vector<std::pair<gm::Point, VtxPtr>> vtxs_;
+    std::unordered_map<gm::Edge, std::vector<VtxPtr>> edges_;
 
     bool is_complete_;
     cmms::Logger log_;

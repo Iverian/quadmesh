@@ -7,6 +7,7 @@
 #include <array>
 #include <cmath>
 #include <limits>
+#include <optional>
 #include <vector>
 
 namespace qmsh {
@@ -14,7 +15,7 @@ namespace qmsh {
 std::array<double, 2> solve_2d(std::array<double, 4>&& a,
                                std::array<double, 2>&& b);
 
-bool is_convex(const gm::Plane& p, const Mesh::ElemPtr& ptr)
+bool is_convex(const gm::Plane& p, const ElementPtr& ptr)
 {
     std::vector<gm::SurfPoint> q(ptr.size());
     std::transform(std::begin(ptr), std::end(ptr), std::begin(q),
@@ -24,15 +25,17 @@ bool is_convex(const gm::Plane& p, const Mesh::ElemPtr& ptr)
     return c.size() == elem_vtx;
 }
 
+std::optional<gm::Point> line_intersect(const gm::Line& a, const gm::Line& b)
+{
+    auto [u, v] = line_solve(a, b);
+    auto pu = a.f(u);
+    auto pv = b.f(v);
+    return gm::cmp::near(pu, pv) ? std::make_optional(pu) : std::nullopt;
+}
+
 DistResult line_dist(const gm::Line& a, const gm::Line& b)
 {
-    auto p = a.dir();
-    auto q = b.dir();
-    auto pq = gm::dot(p, q);
-    auto c = a.c() - b.c();
-    auto [u, v] = solve_2d({gm::sqr(p), -pq, -pq, gm::sqr(q)},
-                           {-gm::dot(p, c), -gm::dot(q, c)});
-
+    auto [u, v] = line_solve(a, b);
     return {gm::dist(a.f(u), b.f(v)), u, v, ProximityCase::MID_TO_MID};
 }
 
@@ -70,6 +73,16 @@ DistResult unary_segment_dist(const gm::Line& a, const gm::Line& b)
 
     r.dist = gm::dist(a.f(r.param_a), b.f(r.param_b));
     return r;
+}
+
+std::array<double, 2> line_solve(const gm::Line& a, const gm::Line& b)
+{
+    auto p = a.dir();
+    auto q = b.dir();
+    auto pq = gm::dot(p, q);
+    auto c = a.c() - b.c();
+    return solve_2d({gm::sqr(p), -pq, -pq, gm::sqr(q)},
+                    {-gm::dot(p, c), -gm::dot(q, c)});
 }
 
 inline std::array<double, 2> solve_2d(std::array<double, 4>&& a,

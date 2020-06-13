@@ -5,6 +5,8 @@
 #include <gm/plane.hpp>
 #include <qmsh/mesh.hpp>
 
+#include <array>
+
 namespace qmsh {
 
 enum class ProximityCase : int {
@@ -20,7 +22,9 @@ struct DistResult {
     ProximityCase pcase;
 };
 
-bool is_convex(const gm::Plane& p, const Mesh::ElemPtr& ptr);
+bool is_convex(const gm::Plane& p, const ElementPtr& ptr);
+std::array<double, 2> line_solve(const gm::Line& a, const gm::Line& b);
+std::optional<gm::Point> line_intersect(const gm::Line& a, const gm::Line& b);
 DistResult line_dist(const gm::Line& a, const gm::Line& b);
 DistResult unary_segment_dist(const gm::Line& a, const gm::Line& b);
 

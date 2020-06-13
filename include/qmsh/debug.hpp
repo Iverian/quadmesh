@@ -5,12 +5,12 @@ namespace qmsh {
 
 #ifdef NDEBUG
 
-#define __GM_NOEXCEPT_RELEASE__ noexcept
+#define __QMSH_NOEXCEPT_RELEASE__ noexcept
 static constexpr auto debug_flag = false;
 
 #else // NDEBUG
 
-#define __GM_NOEXCEPT_RELEASE__
+#define __QMSH_NOEXCEPT_RELEASE__
 static constexpr auto debug_flag = true;
 
 #endif // NDEBUG

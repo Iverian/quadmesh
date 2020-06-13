@@ -8,7 +8,10 @@
 #include <util/cyclic_iterator.hpp>
 #include <util/debug.hpp>
 
+#include <algorithm>
+#include <ctime>
 #include <iterator>
+#include <random>
 #include <vector>
 
 namespace qmsh {
@@ -28,8 +31,14 @@ MeshBuilder::MeshBuilder(const gm::Shell& shell, const qmsh::Config& conf)
 Mesh MeshBuilder::get()
 {
     check_if(!is_complete_, "getting value from same mesh builder twice");
+    auto rd = std::random_device {};
+    auto rng = std::default_random_engine {};
+    rng.seed(rd());
 
-    for (auto& face : shell_.faces()) {
+    auto f = shell_.faces();
+    // std::shuffle(std::begin(f), std::end(f), rng);
+
+    for (auto& face : f) {
         mesh_face(face);
     }
 
@@ -40,14 +49,14 @@ Mesh MeshBuilder::get()
 void MeshBuilder::mesh_face(const gm::Face& obj)
 {
     auto m = obj.boundaries().size();
-    std::vector<std::vector<Mesh::VtxPtr>> bounds(m);
+    std::vector<std::vector<VtxPtr>> bounds(m);
 
     for (size_t i = 0; i < m; ++i) {
         auto& loop = obj.boundaries()[i];
         auto& bound = bounds[i];
 
         for (auto& j : loop) {
-            auto& d = mesh_edge(&j.edge());
+            auto& d = mesh_edge(j.edge());
             if (j.orientation()) {
                 bound.insert(std::end(bound), std::begin(d),
                              std::prev(std::end(d)));
@@ -59,7 +68,7 @@ void MeshBuilder::mesh_face(const gm::Face& obj)
 
         auto j = CyclicIterator(std::begin(bound), std::end(bound));
         do {
-            mesh_.add_edge({{*j, *std::next(j)}});
+            mesh_.insert_edge({{*j, *std::next(j)}});
         } while (++j, j.iter() != j.first());
     }
 
@@ -71,40 +80,40 @@ void MeshBuilder::mesh_face(const gm::Face& obj)
     log_->debug("successfully meshed surface {}", size_t(&obj.surface()));
 }
 
-Mesh::VtxPtr MeshBuilder::mesh_vertex(gm::Point value)
+VtxPtr MeshBuilder::mesh_vertex(gm::Point value)
 {
-    auto [it, flag] = vtxs_.emplace(value, nullptr);
-    if (flag) {
-        it->second = mesh_.add_vertex(value, true);
-        log_->debug("inserted new vertex / {}", value);
-    } else {
-        log_->debug("point matched existing vertex / [{}, {}]", value,
-                    it->first);
+    for (auto& i : vtxs_) {
+        if (gm::cmp::isnear(value, i.first, gm::Tolerance::ZERO)) {
+            log_->debug("point matched existing vertex / [{}, {}]", value,
+                        i.first);
+            return i.second;
+        }
     }
-    return it->second;
+    vtxs_.emplace_back(value, mesh_.insert_external_vertex(value, true));
+    log_->debug("inserted new vertex / {}", value);
+    return vtxs_.back().second;
 }
 
-const std::vector<Mesh::VtxPtr>&
-MeshBuilder::mesh_edge(const gm::Edge* edge_ptr)
+const std::vector<VtxPtr>& MeshBuilder::mesh_edge(const gm::Edge& edge)
 {
-    auto [it, flag] = edges_.emplace(edge_ptr, std::vector<Mesh::VtxPtr>());
-    if (flag) {
-        auto& r = it->second;
-        auto v = cdisc_(*edge_ptr);
+    if (edges_.find(edge) == std::end(edges_)) {
+        std::vector<VtxPtr> r;
+        auto v = cdisc_(edge);
         r.reserve(v.size());
 
         r.emplace_back(mesh_vertex(v.front()));
         for (auto j = std::next(std::begin(v)); j != std::prev(std::end(v));
              ++j) {
-            r.emplace_back(mesh_.add_vertex(*j, true));
+            r.emplace_back(mesh_.insert_external_vertex(*j, false));
         }
         r.emplace_back(mesh_vertex(v.back()));
-        log_->debug("inserted new edge / {}", *edge_ptr);
+        edges_.try_emplace(edge, std::move(r));
+        log_->debug("inserted new edge / {}", edge);
     } else {
-        log_->debug("found existing edge / {}", *edge_ptr);
+        log_->debug("found existing edge / {}", edge);
     }
 
-    return it->second;
+    return edges_[edge];
 }
 
 } // namespace qmsh

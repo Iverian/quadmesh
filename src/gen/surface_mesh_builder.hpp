@@ -37,24 +37,27 @@ public:
 
     TempVertexBuffer();
 
-    Mesh::VtxPtr operator()(gm::Point vertex);
+    VtxPtr operator()(gm::Point vertex, double projected_length);
     void clear() noexcept;
 
 private:
-    std::vector<Mesh::Vtx> buf_;
+    Mesh::Vertices buf_;
 };
 
 class SurfaceMeshBuilder {
 public:
     SurfaceMeshBuilder(cmms::LoggerRef log, const gm::AbstractSurface& s,
                        bool same_sence, Mesh& mesh, const Config& conf,
-                       std::vector<std::vector<Mesh::VtxPtr>> boundaries);
+                       std::vector<std::vector<VtxPtr>> boundaries);
 
     void get();
 
 private:
+    static constexpr int smooth_depth = 3;
+
     struct AddElementResult {
         bool face_inserted;
+        bool seam_added;
         bool iterators_valid;
         operator bool() const noexcept
         {
@@ -67,37 +70,39 @@ private:
                                         const FrontIter& i) const;
     std::pair<Triple, gm::Plane> triple(FrontIter i, FrontIter j,
                                         FrontIter k) const;
+    std::pair<Triple, gm::Plane> triple(gm::Point i, gm::Point j,
+                                        gm::Point k) const;
 
     void eval_iangle(GenerationFront& front);
     void eval_and_resolve(GenerationFront& front);
 
-    Mesh::VtxPtr tmp(gm::Point vertex);
-    std::array<Mesh::VtxPtr, 1> project_bisect(FrontType t, const Triple& tr);
-    std::array<Mesh::VtxPtr, 3> project_trisect(FrontType t, const Triple& tr);
-    std::array<Mesh::VtxPtr, 5> project_pentasect(FrontType t,
-                                                  const Triple& tr);
+    bool place_seams(GenerationFront& front);
+
+    VtxPtr tmp(gm::Point vertex, double projected_length);
+    std::array<VtxPtr, 1> project_bisect(FrontType t, const Triple& tr);
+    std::array<VtxPtr, 3> project_trisect(FrontType t, const Triple& tr);
+    std::array<VtxPtr, 5> project_pentasect(FrontType t, const Triple& tr);
 
     FrontIter build_row(FrontIter first, GenerationFront& front);
     AddElementResult add_element(GenerationFront& front, FrontIter cur,
-                                 FrontIter prev2, Mesh::ElemPtr& tmp,
+                                 FrontIter prev2, ElementPtr& tmp,
                                  const gm::Plane& tan);
 
-    void smooth_front(const GenerationFront& front, int depth) const;
-    void smooth_boundary_nodes(std::vector<Mesh::VtxPtr> nodes_to_smooth,
-                               const GenerationFront& front, int depth) const;
-    void smooth_boundary_node(Mesh::VtxPtr vptr,
-                              const GenerationFront& front) const;
-    void smooth_internal_node(Mesh::VtxPtr vptr, const GenerationFront& front,
-                              int depth,
-                              GenerationFront::VtxCache& smoothed_nodes) const;
+    void smooth_boundary_nodes(FrontIter first, FrontIter last,
+                               GenerationFront& front,
+                               int depth = smooth_depth) const;
+    void smooth_boundary_node(const FrontCycler& cycle, FrontIter it) const;
+    void smooth_internal_node(VtxPtr vtx, const GenerationFront& front,
+                              GenerationFront::VtxCache& smoothed_nodes,
+                              int depth = smooth_depth) const;
 
-    void append_to_mesh(Mesh::ElemPtr& tmp);
+    void append_to_mesh(ElementPtr& tmp);
 
     bool closure_check(GenerationFront& front);
     void six_vertices_closure(GenerationFront& front);
 
-    std::optional<DistResult> edge_intersection(const Mesh::EdgePtr& a,
-                                                const Mesh::EdgePtr& b);
+    std::optional<DistResult> edge_intersection(const EdgePtr& a,
+                                                const EdgePtr& b);
 
     [[nodiscard]] std::pair<GenerationFront, GenerationFront>
     split_front(GenerationFront& front, FrontIter first, FrontIter last,

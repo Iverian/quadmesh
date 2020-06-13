@@ -4,6 +4,11 @@ import sys
 import time
 import json
 import numpy as np
+import matplotlib
+
+matplotlib.use("Qt5Agg")
+
+
 import matplotlib.pyplot as plt
 import argparse as ap
 
@@ -11,12 +16,11 @@ from mpl_toolkits.mplot3d import Axes3D
 
 
 class Vertex(object):
-    def __init__(self, point, adjacent):
+    def __init__(self, point):
         self.p = point
-        self.adj = adjacent
 
     def __repr__(self):
-        return f'{{"p": {self.p}, "adj": {self.adj}}}'
+        return self.p
 
 
 def draw_vertices(ax, vtxs):
@@ -32,10 +36,7 @@ def draw_edges(ax, vtxs, edges):
 
 
 def carcas(ax, data):
-    vtxs = {
-        i["id"]: Vertex(i["value"], i["adjacent"])
-        for i in data["vertices"]
-    }
+    vtxs = {i["id"]: Vertex(i["value"]) for i in data["vertices"]}
     edges = data["edges"]
 
     draw_edges(ax, vtxs, edges)

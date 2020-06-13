@@ -1,3 +1,4 @@
+#include <gm/compare.hpp>
 #include <gm/point.hpp>
 #define _USE_MATH_DEFINES
 
@@ -32,13 +33,14 @@ namespace fs = std::filesystem;
 static int _count = 0;
 #define debug_mesh()                                                          \
     do {                                                                      \
-        constexpr static auto path = "debug";                                 \
+        constexpr static auto path = "out";                                   \
         if (!_count) {                                                        \
             fs::remove_all(path);                                             \
             fs::create_directory(path);                                       \
         }                                                                     \
-        qmsh::json_export({mesh_},                                            \
-                          fmt::format("debug/{:03d}.json", _count++));        \
+        qmsh::json_export(                                                    \
+            {mesh_},                                                          \
+            fmt::format("{}/{:05d}-{:03d}.json", path, _count++, __LINE__));  \
     } while (0)
 #else
 #define debug_mesh()
@@ -49,7 +51,7 @@ namespace qmsh {
 SurfaceMeshBuilder::SurfaceMeshBuilder(
     cmms::LoggerRef log, const gm::AbstractSurface& s, bool same_sence,
     Mesh& mesh, const Config& conf,
-    std::vector<std::vector<Mesh::VtxPtr>> boundaries)
+    std::vector<std::vector<VtxPtr>> boundaries)
     : s_(s)
     , mesh_(mesh)
     , conf_(conf)
@@ -76,8 +78,14 @@ void SurfaceMeshBuilder::get()
 
             while (true) {
                 debug_mesh();
+                check_if(it->size() % 2 == 0,
+                         "front contains odd amount of vertices / {}",
+                         it->size());
 
                 eval_iangle(*it);
+                if (place_seams(*it)) {
+                    break;
+                }
                 if (closure_check(*it)) {
                     to_erase = true;
                     break;
@@ -98,7 +106,59 @@ void SurfaceMeshBuilder::get()
             }
         }
     }
-    mesh_.remove_obsolete_vertices();
+    debug_mesh();
+}
+
+bool SurfaceMeshBuilder::place_seams(GenerationFront& front)
+{
+    static constexpr double eps[] = {M_PI / 4, M_PI / 3};
+
+    auto result = false;
+    auto c = cmms::make_cycler(front);
+    auto i = std::begin(front);
+    while (true) {
+        auto seams_inserted = false;
+        do {
+            auto [first, last] = mesh_.element_lookup(i->global().id());
+            if (i->iangle() < eps[std::distance(first, last) < 5]) {
+                GenerationFront::VtxCache cache;
+
+                auto p = c.prev(i);
+                auto n = c.next(i);
+                if (p->global()->external() || n->global()->external()) {
+                    continue;
+                }
+
+                p->global()->set_value(s_.gproject(
+                    (p->global()->value() + n->global()->value()) / 2));
+                mesh_.replace_vertex(n->global(), p->global());
+
+                auto removed_vtx = i->global();
+                for (auto last = c.next(n); i != last;) {
+                    auto ii = c.next(i);
+                    front.erase(i);
+                    i = ii;
+                }
+                smooth_internal_node(removed_vtx, front, cache);
+
+                i = p;
+                c = cmms::make_cycler(front);
+
+                i->set_iangle(triple(c, i).first.iangle(front.type()),
+                              conf_.angtol());
+                result = seams_inserted = true;
+                log_->debug("inserted seam");
+                debug_mesh();
+                if (front.size() <= edge_vtx) {
+                    break;
+                }
+            }
+        } while (i = c.next(i), !c.is_first(i));
+        if (front.size() <= edge_vtx || !seams_inserted) {
+            break;
+        }
+    }
+    return result;
 }
 
 bool SurfaceMeshBuilder::closure_check(GenerationFront& front)
@@ -111,7 +171,9 @@ bool SurfaceMeshBuilder::closure_check(GenerationFront& front)
         result = true;
         break;
     }
-    case 1: {
+    case 1:
+    case 3: {
+        // FIXME: понять, что тут надо делать
         throw_fmt("unable to close front with single vertex");
         break;
     }
@@ -122,10 +184,10 @@ bool SurfaceMeshBuilder::closure_check(GenerationFront& front)
     }
     case 4: {
         auto it = std::begin(front);
-        Mesh::ElemPtr tmp {{it->global(), std::next(it, 1)->global(),
-                            std::next(it, 2)->global(),
-                            std::next(it, 3)->global()}};
-        tmp = mesh_.add_element(tmp);
+        ElementPtr tmp {{it->global(), std::next(it, 1)->global(),
+                         std::next(it, 2)->global(),
+                         std::next(it, 3)->global()}};
+        tmp = mesh_.insert_element(tmp);
         result = true;
         break;
     }
@@ -145,92 +207,149 @@ bool SurfaceMeshBuilder::closure_check(GenerationFront& front)
     return result;
 }
 
-void SurfaceMeshBuilder::smooth_front(const GenerationFront& front,
-                                      int depth) const
+void SurfaceMeshBuilder::smooth_boundary_nodes(FrontIter first, FrontIter last,
+                                               GenerationFront& front,
+                                               int depth) const
 {
     GenerationFront::VtxCache internal_node_cache;
+    auto c = cmms::make_cycler(front);
 
-    for (auto& i : front) {
-        auto vptr = i.global();
-        smooth_boundary_node(vptr, front);
-        if (depth > 0) {
-            for (auto& adj : *vptr) {
-                smooth_internal_node(vptr, front, depth - 1,
-                                     internal_node_cache);
-            }
-        }
+    for (auto i = first; i != last; i = c.next(i)) {
+        smooth_boundary_node(c, i);
     }
-}
 
-void SurfaceMeshBuilder::smooth_boundary_nodes(
-    std::vector<Mesh::VtxPtr> nodes_to_smooth, const GenerationFront& front,
-    int depth) const
-{
-    GenerationFront::VtxCache internal_node_cache;
-
-    for (auto& vptr : nodes_to_smooth) {
-        smooth_boundary_node(vptr, front);
-    }
     if (depth > 0) {
-        for (auto& vptr : nodes_to_smooth) {
-            for (auto& adj : *vptr) {
-                smooth_internal_node(adj, front, depth, internal_node_cache);
-            }
-        }
-        for (auto& vptr : nodes_to_smooth) {
-            smooth_boundary_node(vptr, front);
-        }
-    }
-}
-
-void SurfaceMeshBuilder::smooth_boundary_node(
-    Mesh::VtxPtr vptr, const GenerationFront& front) const
-{
-    if (vptr->is_external() || front.is_vertex_in_front(vptr)) {
-        return;
-    }
-
-    gm::Point p_iso;
-    auto triplets = mesh_.element_triplets_by_vertex(vptr);
-    for (auto& t : triplets) {
-        p_iso += t[0]->value() + t[1]->value() - t[2]->value();
-    }
-    p_iso /= double(triplets.size());
-    auto delta = p_iso - vptr->value();
-    if (triplets.size() == 2) {
-        gm::Point p_common;
-        for (auto& i : triplets[0]) {
-            for (auto& j : triplets[1]) {
-                if (i->id() == j->id()) {
-                    p_common = i->value();
-                    break;
+        for (auto i = first; i != last; i = c.next(i)) {
+            if (!i->global()->external()) {
+                for (auto& adj : i->global()->adjacent()) {
+                    smooth_internal_node(mesh_[adj], front,
+                                         internal_node_cache, depth);
                 }
             }
         }
-        // TODO: отрефакторить код, чтобы здесь видеть начальную длину проекции
-        auto ideal_length = 1;
-        delta = p_common - vptr->value()
-            + (delta + vptr->value() - p_common) * gm::dist(p_iso, p_common)
-                / ideal_length;
+        for (auto i = first; i != last; i = c.next(i)) {
+            smooth_boundary_node(c, i);
+        }
+    }
+}
+
+gm::Vec angular_smooth_delta(gm::Point vtx, double vtx_projected_length,
+                             std::array<gm::Point, 3> surround, gm::Vec norm)
+{
+    auto v0 = gm::Vec(surround[1], surround[0]);
+    auto v1 = gm::Vec(surround[1], vtx);
+    auto v2 = gm::Vec(surround[1], surround[2]);
+
+    auto c = gm::bisect({v0, v2, v1});
+    auto line = gm::Line(c, surround[1]);
+    auto [u, _] = line_solve(
+        line, gm::Line(gm::Vec(surround[0], surround[2]), surround[0]));
+    auto lq = gm::dist(line.f(u), surround[1]);
+    c *= (vtx_projected_length > lq) ? ((vtx_projected_length + lq) / 2)
+                                     : vtx_projected_length;
+    return c - v1;
+}
+
+void SurfaceMeshBuilder::smooth_boundary_node(const FrontCycler& cycle,
+                                              FrontIter it) const
+{
+    gm::Point delta;
+    auto& vtx = it->global();
+    auto& p0 = vtx->value();
+    if (vtx->external() || vtx->adjacent().size() < 3) {
+        return;
     }
 
-    // TODO: smooth node
+    // FIXME: найти алгоритм сглаживания получше
+    gm::Point p1;
+    for (auto& i : vtx->adjacent()) {
+        p1 += mesh_[i]->value();
+    }
+    p1 /= vtx->adjacent().size();
+
+    if (vtx->adjacent().size() == 3) {
+        auto triplets
+            = mesh_.element_triplets_by_vertex(vtx, cycle.prev(it)->global());
+
+        auto& pl = triplets[0][0]->value();
+        auto& pc = triplets[0][2]->value();
+        auto& pr = triplets[1][2]->value();
+
+        auto ld = vtx->projected_length();
+        auto la = gm::dist(pc, p1);
+
+        auto d0 = p1 - p0;
+        auto d1 = pc - p0 + (d0 + p0 - pc) * (ld / la);
+        auto d2 = angular_smooth_delta(p0, ld, {pl, pc, pr},
+                                       s_.normal(s_.project(pc)));
+        delta = (d1 + d2) / 2;
+    } else {
+        delta = p1 - p0;
+    }
+
+    if (!gm::cmp::zero(delta)) {
+        vtx->set_value(s_.gproject(p0 + delta));
+        debug_mesh();
+    }
 }
 
 void SurfaceMeshBuilder::smooth_internal_node(
-    Mesh::VtxPtr vptr, const GenerationFront& front, int depth,
-    GenerationFront::VtxCache& smoothed_nodes) const
+    VtxPtr vptr, const GenerationFront& front,
+    GenerationFront::VtxCache& smoothed_nodes, int depth) const
 {
-    if (depth <= 0 || vptr->is_external() || front.is_vertex_in_front(vptr)
+    if (depth <= 0 || vptr->external() || front.is_vertex_in_front(vptr)
         || smoothed_nodes.find(vptr) != std::end(smoothed_nodes)) {
         return;
     }
+
+    auto delta = gm::Vec();
+    auto norms = 0.;
+    for (auto& adj : vptr->adjacent()) {
+        auto v = mesh_[adj];
+        auto c = gm::Vec(vptr->value(), v->value());
+        if (v->external()) {
+            std::array<gm::Point, 2> va;
+
+            auto& g = v->value();
+            auto n = s_.normal(s_.project(g));
+
+            auto elems = mesh_.element_by_edge(EdgePtr({vptr, v}));
+            for (auto i = 0; i < edge_vtx; ++i) {
+                auto i0 = elems[i].has_item(vptr);
+                auto i1 = elems[i].has_item(v);
+                check_if(i0 != Element::npos && i1 != Element::npos,
+                         "invalid lookup");
+
+                if ((i0 + 1) % elem_vtx == i1) {
+                    va[i] = elems[i][(i0 + elem_vtx - 1) % elem_vtx]->value();
+                } else {
+                    va[i] = elems[i][(i0 + 1) % elem_vtx]->value();
+                }
+            }
+
+            if (!gm::cmp::zero(
+                    gm::angle(n, gm::cross({g, va[0]}, {g, va[1]})))) {
+                std::swap(va[0], va[1]);
+            }
+
+            auto d0 = angular_smooth_delta(
+                vptr->value(), vptr->projected_length(), {va[0], g, va[1]}, n);
+            c -= d0;
+        }
+        auto nc = gm::norm(c);
+        delta += nc * c;
+        norms += nc;
+    }
+
+    delta /= norms;
+    if (!gm::cmp::zero(delta)) {
+        vptr->set_value(s_.gproject(vptr->value() + delta));
+        debug_mesh();
+    }
+
     smoothed_nodes.insert(vptr);
-
-    // TODO: smooth node
-
-    for (auto& adj : *vptr) {
-        smooth_internal_node(vptr, front, depth - 1, smoothed_nodes);
+    for (auto& adj : vptr->adjacent()) {
+        smooth_internal_node(mesh_[adj], front, smoothed_nodes, depth - 1);
     }
 }
 
@@ -238,12 +357,11 @@ void SurfaceMeshBuilder::six_vertices_closure(GenerationFront& front)
 {
     std::vector<ptrdiff_t> iv;
     std::vector<FrontIter> ends;
-    std::vector<Mesh::VtxPtr> vtx;
+    std::vector<VtxPtr> vtx;
 
     auto t = front.classify_primitive(true, adj_, &iv);
     auto c = cmms::make_cycler(front);
     auto first = std::begin(front);
-    auto last = std::end(front);
     auto i = first;
 
     ends.reserve(iv.size());
@@ -256,7 +374,7 @@ void SurfaceMeshBuilder::six_vertices_closure(GenerationFront& front)
         } while (i = c.next(i), !c.is_first(i));
         if (ends.size() > 1) {
             auto miv = *std::max_element(std::begin(iv), std::end(iv));
-            while (std::distance(ends[0], ends[1]) != miv) {
+            while (c.distance(ends[0], ends[1]) != miv) {
                 cmms::cycle_forward(ends);
                 cmms::cycle_forward(iv);
             }
@@ -278,40 +396,40 @@ void SurfaceMeshBuilder::six_vertices_closure(GenerationFront& front)
 
     switch (t) {
     case PrimitiveType::CIRCLE: {
-        mesh_.add_element({vtx[0], vtx[1], vtx[2], vtx[3]});
-        mesh_.add_element({vtx[3], vtx[4], vtx[5], vtx[0]});
+        mesh_.insert_element({{vtx[0], vtx[1], vtx[2], vtx[3]}});
+        mesh_.insert_element({{vtx[3], vtx[4], vtx[5], vtx[0]}});
         break;
     }
     case PrimitiveType::SEMI_CIRCLE: {
         if (iv[0] == 3 && iv[1] == 3) {
-            mesh_.add_element({vtx[0], vtx[1], vtx[4], vtx[5]});
-            mesh_.add_element({vtx[1], vtx[2], vtx[3], vtx[4]});
+            mesh_.insert_element({{vtx[0], vtx[1], vtx[4], vtx[5]}});
+            mesh_.insert_element({{vtx[1], vtx[2], vtx[3], vtx[4]}});
         } else if (iv[0] == 4 && iv[2] == 2) {
-            mesh_.add_element({vtx[0], vtx[1], vtx[2], vtx[5]});
-            mesh_.add_element({vtx[2], vtx[3], vtx[4], vtx[5]});
+            mesh_.insert_element({{vtx[0], vtx[1], vtx[2], vtx[5]}});
+            mesh_.insert_element({{vtx[2], vtx[3], vtx[4], vtx[5]}});
         } else if (iv[0] == 5 && iv[1] == 1) {
-            mesh_.add_element({vtx[0], vtx[1], vtx[2], vtx[5]});
-            mesh_.add_element({vtx[2], vtx[3], vtx[4], vtx[5]});
+            mesh_.insert_element({{vtx[0], vtx[1], vtx[2], vtx[5]}});
+            mesh_.insert_element({{vtx[2], vtx[3], vtx[4], vtx[5]}});
         } else {
             throw_fmt("unexpected intervals");
         }
         break;
     }
     case PrimitiveType::TRIANGLE: {
-        auto p = (vtx[1]->value() + vtx[3]->value() + vtx[5]->value()) / 3;
-        vtx.emplace_back(mesh_.add_vertex(s_.gproject(p)));
-
         if ((iv[0] == 2 && iv[1] == 2 && iv[2] == 2)
             || (iv[0] == 4 && iv[1] == 1 && iv[2] == 1)) {
-            mesh_.add_element({vtx[0], vtx[1], vtx[6], vtx[5]});
-            mesh_.add_element({vtx[1], vtx[2], vtx[3], vtx[6]});
-            mesh_.add_element({vtx[3], vtx[4], vtx[5], vtx[6]});
+            auto p = (vtx[1]->value() + vtx[3]->value() + vtx[5]->value()) / 3;
+            vtx.emplace_back(mesh_.insert_internal_vertex(s_.gproject(p), 1));
+
+            mesh_.insert_element({{vtx[0], vtx[1], vtx[6], vtx[5]}});
+            mesh_.insert_element({{vtx[1], vtx[2], vtx[3], vtx[6]}});
+            mesh_.insert_element({{vtx[3], vtx[4], vtx[5], vtx[6]}});
         } else if (iv[0] == 3 && iv[1] == 2 && iv[2] == 1) {
-            mesh_.add_element({vtx[0], vtx[1], vtx[4], vtx[5]});
-            mesh_.add_element({vtx[1], vtx[2], vtx[3], vtx[4]});
+            mesh_.insert_element({{vtx[0], vtx[1], vtx[4], vtx[5]}});
+            mesh_.insert_element({{vtx[1], vtx[2], vtx[3], vtx[4]}});
         } else if (iv[0] == 3 && iv[1] == 1 && iv[2] == 2) {
-            mesh_.add_element({vtx[0], vtx[5], vtx[2], vtx[1]});
-            mesh_.add_element({vtx[2], vtx[5], vtx[4], vtx[3]});
+            mesh_.insert_element({{vtx[0], vtx[5], vtx[2], vtx[1]}});
+            mesh_.insert_element({{vtx[2], vtx[5], vtx[4], vtx[3]}});
         } else {
             throw_fmt("unexpected intervals");
         }
@@ -319,25 +437,25 @@ void SurfaceMeshBuilder::six_vertices_closure(GenerationFront& front)
     }
     case PrimitiveType::RECTANGLE: {
         if (iv[0] == 2 && iv[1] == 1 && iv[2] == 2 && iv[3] == 1) {
-            mesh_.add_element({vtx[0], vtx[1], vtx[4], vtx[5]});
-            mesh_.add_element({vtx[1], vtx[2], vtx[3], vtx[4]});
+            mesh_.insert_element({{vtx[0], vtx[1], vtx[4], vtx[5]}});
+            mesh_.insert_element({{vtx[1], vtx[2], vtx[3], vtx[4]}});
         } else if (iv[0] == 3 && iv[1] == 1 && iv[2] == 1 && iv[3] == 1) {
             auto p = (vtx[2]->value() + vtx[5]->value()) / 2;
             auto q = (vtx[1]->value() + vtx[4]->value()) / 2;
-            vtx.emplace_back(mesh_.add_vertex(s_.gproject(p)));
-            vtx.emplace_back(mesh_.add_vertex(s_.gproject(q)));
+            vtx.emplace_back(mesh_.insert_internal_vertex(s_.gproject(p), 1));
+            vtx.emplace_back(mesh_.insert_internal_vertex(s_.gproject(q), 1));
 
-            mesh_.add_element({vtx[0], vtx[1], vtx[6], vtx[5]});
-            mesh_.add_element({vtx[1], vtx[2], vtx[7], vtx[6]});
-            mesh_.add_element({vtx[2], vtx[3], vtx[4], vtx[7]});
-            mesh_.add_element({vtx[4], vtx[5], vtx[6], vtx[7]});
+            mesh_.insert_element({{vtx[0], vtx[1], vtx[6], vtx[5]}});
+            mesh_.insert_element({{vtx[1], vtx[2], vtx[7], vtx[6]}});
+            mesh_.insert_element({{vtx[2], vtx[3], vtx[4], vtx[7]}});
+            mesh_.insert_element({{vtx[4], vtx[5], vtx[6], vtx[7]}});
         } else if (iv[0] == 2 && iv[1] == 2 && iv[2] == 1 && iv[3] == 1) {
             auto p = (vtx[1]->value() + vtx[3]->value() + vtx[5]->value()) / 3;
-            vtx.emplace_back(mesh_.add_vertex(s_.gproject(p)));
+            vtx.emplace_back(mesh_.insert_internal_vertex(s_.gproject(p), 1));
 
-            mesh_.add_element({vtx[0], vtx[1], vtx[6], vtx[5]});
-            mesh_.add_element({vtx[1], vtx[2], vtx[3], vtx[6]});
-            mesh_.add_element({vtx[3], vtx[4], vtx[5], vtx[6]});
+            mesh_.insert_element({{vtx[0], vtx[1], vtx[6], vtx[5]}});
+            mesh_.insert_element({{vtx[1], vtx[2], vtx[3], vtx[6]}});
+            mesh_.insert_element({{vtx[3], vtx[4], vtx[5], vtx[6]}});
         } else {
             throw_fmt("unexpected intervals");
         }
@@ -348,18 +466,18 @@ void SurfaceMeshBuilder::six_vertices_closure(GenerationFront& front)
         break;
     }
     }
+
+    {
+        GenerationFront::VtxCache cache;
+        for (auto& j : vtx) {
+            smooth_internal_node(j, front, cache);
+        }
+    }
 }
 
 std::pair<Triple, gm::Plane>
 SurfaceMeshBuilder::triple(const FrontCycle& it) const
 {
-    Triple result;
-    auto t = gm::Plane(s_.tangent(s_.project(it->value())));
-    result.p[0] = t.gproject(std::prev(it)->value());
-    result.p[1] = it->value();
-    result.p[2] = t.gproject(std::next(it)->value());
-    result.norm = t.ax().z();
-
     return triple(std::prev(it).iter(), it.iter(), std::next(it).iter());
 }
 
@@ -372,11 +490,17 @@ SurfaceMeshBuilder::triple(const FrontCycler& c, const FrontIter& i) const
 std::pair<Triple, gm::Plane>
 SurfaceMeshBuilder::triple(FrontIter i, FrontIter j, FrontIter k) const
 {
+    return triple(i->value(), j->value(), k->value());
+}
+
+std::pair<Triple, gm::Plane>
+SurfaceMeshBuilder::triple(gm::Point i, gm::Point j, gm::Point k) const
+{
     Triple result;
-    auto t = gm::Plane(s_.tangent(s_.project(j->value())));
-    result.p[0] = t.gproject(i->value());
-    result.p[1] = j->value();
-    result.p[2] = t.gproject(k->value());
+    auto t = gm::Plane(s_.tangent(s_.project(j)));
+    result.p[0] = t.gproject(i);
+    result.p[1] = j;
+    result.p[2] = t.gproject(k);
     result.norm = t.ax().z();
 
     return {result, t};
@@ -403,10 +527,10 @@ FrontIter SurfaceMeshBuilder::build_row(FrontIter first,
                                         GenerationFront& front)
 {
     auto t = front.type();
-    AddElementResult last_state {true, true};
+    AddElementResult last_state {true, false, true};
 
     auto c = cmms::make_cycler(front);
-    Mesh::ElemPtr tmp;
+    ElementPtr tmp;
 
     buf_.clear();
 
@@ -421,7 +545,6 @@ FrontIter SurfaceMeshBuilder::build_row(FrontIter first,
         auto vr = project_bisect(t, trr)[0];
 
         tmp = {{ii->global(), ir->global(), vr, vi}};
-        // TODO: почекать какую плоскость тут лучше использовать
         if ((last_state = add_element(front, ir, ii, tmp, pr))) {
             front.insert(ir, tmp[2]);
             front.insert(ir, tmp[3]);
@@ -447,9 +570,9 @@ FrontIter SurfaceMeshBuilder::build_row(FrontIter first,
             if (!(last_state = add_element(front, ii, iq, tmp, p))) {
                 break;
             }
-            v[0] = tmp[3];
-            *ip = GenerationFront::Vtx(v[0]);
 
+            v[0] = tmp[3];
+            front.replace(ip, v[0]);
             break;
         }
         case VtxType::CORNER: {
@@ -460,7 +583,7 @@ FrontIter SurfaceMeshBuilder::build_row(FrontIter first,
                 break;
             }
             v[0] = tmp[3];
-            *ip = GenerationFront::Vtx(v[0]);
+            front.replace(ip, v[0]);
 
             tmp = {{ii->global(), v[2], v[1], v[0]}};
             if (!(last_state = add_element(front, ii, ip, tmp, p))) {
@@ -481,7 +604,7 @@ FrontIter SurfaceMeshBuilder::build_row(FrontIter first,
                 break;
             }
             v[0] = tmp[3];
-            *ip = GenerationFront::Vtx(v[0]);
+            front.replace(ip, v[0]);
 
             tmp = {{ii->global(), v[2], v[1], v[0]}};
             if (!(last_state = add_element(front, ii, ip, tmp, p))) {
@@ -492,8 +615,9 @@ FrontIter SurfaceMeshBuilder::build_row(FrontIter first,
             front.insert(ii, v[1]);
             front.insert(ii, v[2]);
 
+            auto i2p = c.prev(ii);
             tmp = {{ii->global(), v[4], v[3], v[2]}};
-            if (!(last_state = add_element(front, ii, c.prev(ii), tmp, p))) {
+            if (!(last_state = add_element(front, ii, i2p, tmp, p))) {
                 break;
             }
             v[3] = tmp[2];
@@ -508,7 +632,13 @@ FrontIter SurfaceMeshBuilder::build_row(FrontIter first,
             if (!(last_state = add_element(front, ii, iq, tmp, p))) {
                 break;
             }
-            front.erase(ip);
+
+            if (first == ip) {
+                auto nip = front.erase(ip);
+                first = (nip == std::end(front)) ? std::prev(nip) : nip;
+            } else {
+                front.erase(ip);
+            }
             front.erase(ii);
             ii = ir;
 
@@ -531,6 +661,10 @@ FrontIter SurfaceMeshBuilder::build_row(FrontIter first,
             if (!last_state.iterators_valid) {
                 ii = std::end(front);
             }
+            if (front.size()) {
+                smooth_boundary_nodes(std::next(std::begin(front)),
+                                      std::begin(front), front);
+            }
             break;
         }
     }
@@ -540,40 +674,13 @@ FrontIter SurfaceMeshBuilder::build_row(FrontIter first,
 
 SurfaceMeshBuilder::AddElementResult
 SurfaceMeshBuilder::add_element(GenerationFront& front, FrontIter cur,
-                                FrontIter prev2, Mesh::ElemPtr& tmp,
+                                FrontIter prev2, ElementPtr& tmp,
                                 const gm::Plane& tan)
 {
-    AddElementResult result {false, true};
+    AddElementResult result {false, false, true};
 
-    if (!is_convex(tan, tmp)) {
-        std::vector<int> not_inserted_pos;
-        not_inserted_pos.reserve(elem_vtx);
-        for (int i = 0; i < elem_vtx; ++i) {
-            if (!tmp[i]->is_inserted()) {
-                not_inserted_pos.push_back(i);
-            }
-        }
-        if (not_inserted_pos.size() == 1) {
-            auto vtx_prev = tmp[(not_inserted_pos[0] - 1) % elem_vtx];
-            auto vtx_next = tmp[(not_inserted_pos[0] + 1) % elem_vtx];
-            vtx_prev->set_value(
-                s_.gproject((vtx_prev->value() + vtx_next->value()) / 2));
-            log_->debug("replacing vertex {} with {}", vtx_next->id(),
-                        vtx_prev->id());
-            mesh_.replace_vertex(vtx_next, vtx_prev);
-            front.erase(std::prev(cur));
-            front.erase(prev2);
-            debug_mesh();
-        } else {
-            append_to_mesh(tmp);
-            debug_mesh();
-            throw_fmt("last element is not convex / {}", tmp);
-        }
-        goto label_result;
-    }
-
-    if (!tmp[0]->is_inserted() || !tmp[1]->is_inserted()
-        || !tmp[2]->is_inserted() || !tmp[3]->is_inserted()) {
+    if (!tmp[0].belongs_to(mesh_) || !tmp[1].belongs_to(mesh_)
+        || !tmp[2].belongs_to(mesh_) || !tmp[3].belongs_to(mesh_)) {
         for (auto it = std::begin(fronts_); it != std::end(fronts_); ++it) {
             auto& f = *it;
             auto is_same = (&front == &f);
@@ -583,68 +690,108 @@ SurfaceMeshBuilder::add_element(GenerationFront& front, FrontIter cur,
             decltype(i) j;
             do {
                 j = c.next(i);
-                Mesh::EdgePtr v = {{i->global(), j->global()}};
+                EdgePtr v {{i->global(), j->global()}};
                 for (size_t p = 0; p < elem_vtx; ++p) {
                     auto q = (p + 1) % elem_vtx;
 
                     auto& vp = tmp[p];
                     auto& vq = tmp[q];
-                    if ((vp->is_inserted() && vq->is_inserted())
+                    if ((vp.belongs_to(mesh_) && vq.belongs_to(mesh_))
                         || (v[0] == vp || v[0] == vq)
                         || (v[1] == vp || v[1] == vq)) {
                         continue;
                     }
+
                     if (auto r = edge_intersection({{vp, vq}}, v); r) {
-                        if (v[0]->is_external() || v[1]->is_external()) {
-                            auto info = r.value();
-                            switch (info.pcase) {
-                            case ProximityCase::END_TO_END:
-                            case ProximityCase::END_TO_MID: {
-                                // TODO: Тут нет пересечений, но лучше
-                                //  подвинуть новые точки для улучшения
-                                //  качества сетки
-                                goto label_insert;
-                            }
-                            case ProximityCase::MID_TO_MID: {
-                                // FIXME: Настоящее пересечние, нужно
-                                //  обработать
-                                append_to_mesh(tmp);
-                                debug_mesh();
-                                std::terminate();
-                                break;
-                            }
+                        auto info = r.value();
+
+                        switch (info.pcase) {
+                        case ProximityCase::END_TO_END:
+                        case ProximityCase::END_TO_MID: {
+                            if (is_same) {
+                                auto a = c.next(cur);
+                                auto b = c.prev(cur);
+
+                                if (a->type() == VtxType::END
+                                    || b->type() == VtxType::END) {
+
+                                    log_->debug("inserted seam at row build");
+
+                                    auto x
+                                        = (a->type() == VtxType::END) ? a : b;
+                                    auto pos = (a->type() == VtxType::END)
+                                        ? c.next(a)
+                                        : c.prev(b);
+                                    if (cur->global()->external()
+                                        || pos->global()->external()) {
+                                        goto label_insert;
+                                    }
+
+                                    cur->global()->set_value(
+                                        s_.gproject((cur->global()->value()
+                                                     + pos->global()->value())
+                                                    / 2));
+                                    mesh_.replace_vertex(pos->global(),
+                                                         cur->global());
+                                    log_->debug("replacing vertex {} with {}",
+                                                pos->global().id(),
+                                                cur->global().id());
+
+                                    front.erase(pos);
+                                    front.erase(x);
+
+                                    result.iterators_valid = false;
+                                    goto label_result;
+                                } else {
+                                    goto label_intersection;
+                                }
                             }
                         }
-#ifndef NDEBUG
-                        if (_count >= 56) {
+                        case ProximityCase::MID_TO_MID: {
+                        label_intersection:
                             append_to_mesh(tmp);
                             debug_mesh();
-                            std::terminate();
+
+                            if (v[0]->external() || v[1]->external()) {
+                                throw_fmt("mid to mid intersection with "
+                                          "external edge");
+                            }
+
+                            auto a = s_.gproject(
+                                (vq->value() + i->global()->value()) / 2);
+                            auto b = s_.gproject(
+                                (vp->value() + j->global()->value()) / 2);
+
+                            i->global()->set_value(std::move(a));
+                            j->global()->set_value(std::move(b));
+                            mesh_.replace_vertex(vp, i->global());
+                            mesh_.replace_vertex(vq, j->global());
+                            vp = i->global();
+                            vq = j->global();
+
+                            if (is_same) {
+                                auto [na, nb]
+                                    = split_front(front, cur, j, prev2);
+                                front.clear();
+                                if (na.size() != 1) {
+                                    fronts_.emplace_back(std::move(na));
+                                }
+                                if (nb.size() != 1) {
+                                    fronts_.emplace_back(std::move(nb));
+                                }
+                                log_->debug("split front");
+                            } else {
+                                merge_fronts(front, cur, f, i);
+                                fronts_.erase(it);
+                                log_->debug("merge fronts");
+                            }
+
+                            result.iterators_valid = false;
+                            goto label_result;
+
+                            break;
                         }
-#endif
-                        auto a = s_.gproject(
-                            (vq->value() + i->global()->value()) / 2);
-                        auto b = s_.gproject(
-                            (vp->value() + j->global()->value()) / 2);
-
-                        i->global()->set_value(std::move(a));
-                        j->global()->set_value(std::move(b));
-                        vp = i->global();
-                        vq = j->global();
-
-                        if (is_same) {
-                            auto [na, nb] = split_front(front, cur, j, prev2);
-                            front = std::move(na);
-                            fronts_.emplace_back(std::move(nb));
-                            log_->debug("split front");
-                        } else {
-                            merge_fronts(front, cur, f, i);
-                            fronts_.erase(it);
-                            log_->debug("merge fronts");
                         }
-
-                        result.iterators_valid = false;
-                        goto label_result;
                     }
                 }
             } while (i = j, !c.is_first(i));
@@ -658,24 +805,23 @@ label_result:
     if (result) {
         log_->debug("inserted element / {}", tmp);
     } else {
-        log_->debug("element not inserted / {}", tmp);
+        log_->debug("element not inserted");
     }
 
     debug_mesh();
     return result;
 }
 
-void SurfaceMeshBuilder::append_to_mesh(Mesh::ElemPtr& tmp)
+void SurfaceMeshBuilder::append_to_mesh(ElementPtr& tmp)
 {
-    tmp = mesh_.add_element(tmp);
+    tmp = mesh_.insert_element(tmp);
     for (auto i = 0; i < elem_vtx; ++i) {
         adj_.set_adjacent(tmp[i], tmp[(i + 1) % elem_vtx]);
     }
 }
 
 std::optional<DistResult>
-SurfaceMeshBuilder::edge_intersection(const Mesh::EdgePtr& a,
-                                      const Mesh::EdgePtr& b)
+SurfaceMeshBuilder::edge_intersection(const EdgePtr& a, const EdgePtr& b)
 {
     static constexpr auto f_dist = 1.0;
     static constexpr auto f_angle = 0.25;
@@ -695,28 +841,29 @@ SurfaceMeshBuilder::edge_intersection(const Mesh::EdgePtr& a,
     return (c < 1) ? std::optional<DistResult>(r) : std::nullopt;
 }
 
-Mesh::VtxPtr SurfaceMeshBuilder::tmp(gm::Point vertex)
+VtxPtr SurfaceMeshBuilder::tmp(gm::Point vertex, double projected_length)
 {
-    return buf_(s_.gproject(vertex));
+    return buf_(vertex, projected_length);
 }
 
-std::array<Mesh::VtxPtr, 1>
-SurfaceMeshBuilder::project_bisect(FrontType t, const Triple& tr)
+std::array<VtxPtr, 1> SurfaceMeshBuilder::project_bisect(FrontType t,
+                                                         const Triple& tr)
 {
     auto angle = tr.iangle(t) / 2;
 
     auto d = (dist(tr[0], tr[1]) + dist(tr[1], tr[2])) / (2 * sin(angle));
-    auto r = tr[1]
-        + d
-            * gm::dot(gm::Mat::rotate(angle, tr.norm),
-                      gm::unit({tr[1], tr[2]}));
+    auto r = s_.gproject(tr[1]
+                         + d
+                             * gm::dot(gm::Mat::rotate(angle, tr.norm),
+                                       gm::unit({tr[1], tr[2]})));
 
     log_->debug("at bisect / {}", tr);
-    return {tmp(r)};
+
+    return {tmp(r, gm::dist(tr[1], r))};
 }
 
-std::array<Mesh::VtxPtr, 3>
-SurfaceMeshBuilder::project_trisect(FrontType t, const Triple& tr)
+std::array<VtxPtr, 3> SurfaceMeshBuilder::project_trisect(FrontType t,
+                                                          const Triple& tr)
 {
     auto angle = tr.iangle(t) / 3;
     auto rmat = gm::Mat::rotate(angle, tr.norm);
@@ -727,12 +874,17 @@ SurfaceMeshBuilder::project_trisect(FrontType t, const Triple& tr)
     auto u1 = unit(u0 + u2);
 
     log_->debug("at trisect / {}", tr);
-    return {tmp(tr[1] + d * u0), tmp(tr[1] + sqrt(2) * d * u1),
-            tmp(tr[1] + d * u2)};
+
+    std::array<gm::Point, 3> r {{s_.gproject(tr[1] + d * u0),
+                                 s_.gproject(tr[1] + sqrt(2) * d * u1),
+                                 s_.gproject(tr[1] + d * u2)}};
+
+    return {tmp(r[0], gm::dist(tr[1], r[0])), tmp(r[1], gm::dist(tr[1], r[1])),
+            tmp(r[2], gm::dist(tr[1], r[2]))};
 }
 
-std::array<Mesh::VtxPtr, 5>
-SurfaceMeshBuilder::project_pentasect(FrontType t, const Triple& tr)
+std::array<VtxPtr, 5> SurfaceMeshBuilder::project_pentasect(FrontType t,
+                                                            const Triple& tr)
 {
     auto angle = tr.iangle(t);
     auto rmat = gm::Mat::rotate(angle, tr.norm);
@@ -746,8 +898,15 @@ SurfaceMeshBuilder::project_pentasect(FrontType t, const Triple& tr)
         = (gm::dist(tr[0], tr[1]) + gm::dist(tr[1], tr[2])) / (2 * sin(angle));
 
     log_->debug("at pentasect / {}", tr);
-    return {tmp(tr[1] + d * u0), tmp(tr[1] + sqrt(2) * d * u1),
-            tmp(tr[1] + d * u2), tmp(tr[1] + d * u3), tmp(tr[1] + d * u4)};
+
+    std::array<gm::Point, 5> r {
+        {s_.gproject(tr[1] + d * u0), s_.gproject(tr[1] + sqrt(2) * d * u1),
+         s_.gproject(tr[1] + d * u2), s_.gproject(tr[1] + d * u3),
+         s_.gproject(tr[1] + d * u4)}};
+
+    return {tmp(r[0], gm::dist(tr[1], r[0])), tmp(r[1], gm::dist(tr[1], r[1])),
+            tmp(r[2], gm::dist(tr[1], r[2])), tmp(r[3], gm::dist(tr[1], r[3])),
+            tmp(r[4], gm::dist(tr[1], r[4]))};
 }
 
 [[nodiscard]] std::pair<GenerationFront, GenerationFront>
@@ -788,10 +947,9 @@ TempVertexBuffer::TempVertexBuffer()
     buf_.reserve(init_size);
 }
 
-Mesh::VtxPtr TempVertexBuffer::operator()(gm::Point vertex)
+VtxPtr TempVertexBuffer::operator()(gm::Point vertex, double projected_length)
 {
-    buf_.emplace_back(vertex);
-    return &buf_.back();
+    return VtxPtr(buf_, buf_.emplace(vertex, projected_length));
 }
 
 void TempVertexBuffer::clear() noexcept

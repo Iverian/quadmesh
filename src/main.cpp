@@ -27,7 +27,7 @@
 
 static constexpr auto logger_id = "root";
 static constexpr auto default_conf = "quadmeshgen-config.json";
-static constexpr auto output_ext = "out.json";
+static constexpr auto output_ext = "out.geo";
 
 enum ExitCode : int {
     SUCCESS,
@@ -64,12 +64,16 @@ int main(int argc, char** argv)
 
         std::vector<qmsh::Mesh> result(param.data.size());
         std::transform(std::begin(param.data), std::end(param.data),
-                       std::begin(result), [& conf = param.conf](auto& sh) {
+                       std::begin(result), [&conf = param.conf](auto& sh) {
                            return qmsh::build_mesh(sh, conf);
                        });
 
         logger->debug("writing to file `{}`", param.output_path);
-        qmsh::json_export(result, param.output_path);
+        // FIXME
+        std::ofstream os(param.output_path);
+        result[0].to_gmsh(os);
+        os.close();
+        // qmsh::json_export(result, param.output_path);
     } catch (const std::exception& err) {
         logger->critical("uncaught exception: {}", err.what());
         std::exit(UNCAUGHT_EXCEPTION);

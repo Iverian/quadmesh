@@ -6,13 +6,10 @@
 
 namespace qmsh {
 
-static constexpr auto da = M_PI / 8;
-
 Config::Config()
-    : angtol_ {}
-    , discr_coeffs_ {9, 9}
+    : angtol_ {M_PI / 12, M_PI / 12, M_PI / 12, M_PI / 12, M_PI / 12, M_PI / 4}
+    , discr_coeffs_ {10, 10}
 {
-    angtol_.fill(da);
 }
 
 const Config::AngTol& Config::angtol() const noexcept
