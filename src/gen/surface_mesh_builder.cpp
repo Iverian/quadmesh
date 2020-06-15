@@ -2,7 +2,6 @@
 #include <gm/point.hpp>
 #define _USE_MATH_DEFINES
 
-#include "minimizer.hpp"
 #include "surface_mesh_builder.hpp"
 #include "util.hpp"
 
