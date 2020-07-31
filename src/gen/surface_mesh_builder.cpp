@@ -173,12 +173,10 @@ bool SurfaceMeshBuilder::closure_check(GenerationFront& front)
     }
     case 1:
     case 3: {
-        // FIXME: понять, что тут надо делать
         throw_fmt("unable to close front with single vertex");
         break;
     }
     case 2: {
-        // TODO: add seams
         result = true;
         break;
     }
@@ -260,7 +258,6 @@ void SurfaceMeshBuilder::smooth_boundary_node(const FrontCycler& cycle,
         return;
     }
 
-    // FIXME: найти алгоритм сглаживания получше
     gm::Point p1;
     for (auto& i : vtx->adjacent()) {
         p1 += mesh_[i]->value();
@@ -534,8 +531,6 @@ FrontIter SurfaceMeshBuilder::build_row(FrontIter first,
 
     buf_.clear();
 
-    // Случай, когда на фронте нет концов: создаем на ровном месте
-    // четырехугольник и выходим для перерасчета типов узлов
     if (first->type() == VtxType::SIDE) {
         auto ii = first;
         auto ir = c.next(first);
@@ -654,9 +649,6 @@ FrontIter SurfaceMeshBuilder::build_row(FrontIter first,
         }
         }
         buf_.clear();
-        // это нельзя написать в условии цикла т.к. там инкрементируется
-        // итератор, но при last_state.iterators_valid=false все итераторы
-        // невалидны
         if (!last_state) {
             if (!last_state.iterators_valid) {
                 ii = std::end(front);
